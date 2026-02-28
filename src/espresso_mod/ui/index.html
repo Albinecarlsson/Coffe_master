@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <title>Espresso Mod UI</title>
+    <style>
+      :root {
+        --bg: #0b0f14;
+        --card: #121a23;
+        --text: #e7eef7;
+        --muted: #9bb0c6;
+        --accent: #4da3ff;
+        --danger: #ff4d4d;
+        --ok: #33d17a;
+        --warn: #ffcc00;
+        --border: rgba(255, 255, 255, 0.08);
+        --shadow: 0 10px 30px rgba(0,0,0,0.35);
+        --radius: 18px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--border);
+        position: sticky; top: 0;
+        background: rgba(11,15,20,0.92);
+        backdrop-filter: blur(10px);
+        z-index: 10;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0.2px;
+      }
+      header .sub {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      main {
+        padding: 14px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 14px;
+      }
+      @media (max-width: 900px) {
+        .grid { grid-template-columns: 1fr; }
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 14px;
+      }
+      .card h2 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: var(--muted);
+        font-weight: 650;
+        letter-spacing: 0.2px;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px 12px;
+        align-items: baseline;
+      }
+      .kv .k { color: var(--muted); font-size: 13px; }
+      .kv .v { font-size: 22px; font-weight: 700; }
+      .kv .small { font-size: 13px; font-weight: 600; color: var(--muted); }
+      .pill {
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .pill.ok { color: var(--ok); border-color: rgba(51,209,122,0.25); }
+      .pill.warn { color: var(--warn); border-color: rgba(255,204,0,0.25); }
+      .pill.bad { color: var(--danger); border-color: rgba(255,77,77,0.25); }
+      button {
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        padding: 14px 14px;
+        border-radius: 16px;
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: 0.2px;
+        min-width: 120px;
+        touch-action: manipulation;
+      }
+      button.primary { background: rgba(77,163,255,0.16); border-color: rgba(77,163,255,0.35); }
+      button.danger { background: rgba(255,77,77,0.14); border-color: rgba(255,77,77,0.35); }
+      button:active { transform: scale(0.99); }
+      .control-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .control-grid.full { grid-template-columns: 1fr; }
+      .field {
+        display: grid;
+        gap: 6px;
+        min-width: 170px;
+      }
+      label { font-size: 12px; color: var(--muted); }
+      input, select {
+        width: 100%;
+        padding: 12px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: rgba(0,0,0,0.2);
+        color: var(--text);
+        font-size: 15px;
+        outline: none;
+      }
+      canvas { width: 100% !important; height: 320px !important; }
+      .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+      .split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      @media (max-width: 700px) {
+        .split { grid-template-columns: 1fr; }
+      }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  </head>
+
+  <body>
+    <header>
+      <h1>Espresso Mod</h1>
+      <div class="sub">
+        Local UI • <span id="apiBase" class="mono"></span>
+      </div>
+    </header>
+
+    <main>
+      <div class="grid">
+        <section class="card">
+          <h2>Live</h2>
+          <div class="split">
+            <div class="kv">
+              <div class="k">Temperature</div>
+              <div class="v"><span id="tempC">--</span><span class="small"> °C</span></div>
+
+              <div class="k">Setpoint</div>
+              <div class="v"><span id="setpointC">--</span><span class="small"> °C</span></div>
+
+              <div class="k">Heater power</div>
+              <div class="v"><span id="heaterPower">--</span><span class="small"> (0..1)</span></div>
+
+              <div class="k">Valve open</div>
+              <div class="v"><span id="valveOpen">--</span><span class="small"> (0..1)</span></div>
+            </div>
+
+            <div>
+              <div class="row" style="justify-content: space-between">
+                <span id="sensorPill" class="pill">Sensor: --</span>
+                <span id="controlPill" class="pill">Control: --</span>
+              </div>
+
+              <div style="height: 10px"></div>
+
+              <div class="field">
+                <label for="setpointInput">Setpoint (°C)</label>
+                <input id="setpointInput" type="number" step="0.1" min="0" max="130" value="93.0" />
+              </div>
+
+              <div style="height: 10px"></div>
+
+              <div class="control-grid">
+                <button id="btnEnable" class="primary">Enable PID</button>
+                <button id="btnDisable">Disable PID</button>
+                <button id="btnApplySetpoint" class="primary">Apply setpoint</button>
+                <button id="btnValveClose">Valve 0%</button>
+                <button id="btnValveHalf">Valve 50%</button>
+                <button id="btnValveOpen" class="primary">Valve 100%</button>
+              </div>
+
+              <div class="hint">
+                Tip: For kiosk mode on the Pi, run Chromium fullscreen pointing to this page.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Shot</h2>
+          <div class="field">
+            <label for="profileSelect">Profile</label>
+            <select id="profileSelect"></select>
+          </div>
+
+          <div style="height: 10px"></div>
+
+          <div class="control-grid full">
+            <button id="btnShotStart" class="primary">Start shot</button>
+            <button id="btnShotCancel" class="danger">Cancel shot</button>
+          </div>
+
+          <div style="height: 12px"></div>
+
+          <div class="kv">
+            <div class="k">Status</div>
+            <div class="v" style="font-size: 18px"><span id="shotState">--</span></div>
+
+            <div class="k">Profile</div>
+            <div class="v" style="font-size: 16px"><span id="shotProfile">--</span></div>
+
+            <div class="k">Step</div>
+            <div class="v" style="font-size: 16px">
+              <span id="shotStep">--</span><span class="small"> (index)</span>
+            </div>
+
+            <div class="k">Elapsed</div>
+            <div class="v" style="font-size: 16px">
+              <span id="shotElapsed">--</span><span class="small"> s</span>
+            </div>
+
+            <div class="k">Message</div>
+            <div class="v" style="font-size: 14px; font-weight: 600; color: var(--muted);">
+              <span id="shotMsg">--</span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="row" style="justify-content: space-between; align-items: end;">
+          <div>
+            <h2 style="margin-bottom: 4px;">Telemetry</h2>
+            <div class="hint">Shows the last <span id="secondsLabel">60</span> seconds.</div>
+          </div>
+          <div class="row">
+            <div class="field" style="min-width: 160px;">
+              <label for="secondsInput">Window (seconds)</label>
+              <input id="secondsInput" type="number" min="5" max="600" value="60" />
+            </div>
+            <button id="btnApplyWindow">Apply</button>
+          </div>
+        </div>
+
+        <div style="height: 10px"></div>
+        <canvas id="chart"></canvas>
+      </section>
+    </main>
+
+    <script>
+      // --- API base ---
+      const API_BASE = window.location.origin;
+      document.getElementById("apiBase").textContent = API_BASE;
+
+      // --- Utilities ---
+      function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+      function fmt(x, d=2) { return (Number.isFinite(x) ? x.toFixed(d) : "--"); }
+
+      async function apiGet(path) {
+        const r = await fetch(`${API_BASE}${path}`);
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        return await r.json();
+      }
+      async function apiPost(path, bodyObj=null) {
+        const opts = { method: "POST", headers: { "Content-Type": "application/json" } };
+        if (bodyObj !== null) opts.body = JSON.stringify(bodyObj);
+        const r = await fetch(`${API_BASE}${path}`, opts);
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        return await r.json();
+      }
+
+      // --- Chart setup ---
+      const ctx = document.getElementById("chart").getContext("2d");
+
+      const chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [
+            { label: "Temp (°C)", data: [], yAxisID: "yTemp", tension: 0.2, pointRadius: 0 },
+            { label: "Setpoint (°C)", data: [], yAxisID: "yTemp", tension: 0.2, pointRadius: 0 },
+            { label: "Heater (0..1)", data: [], yAxisID: "yUnit", tension: 0.2, pointRadius: 0 },
+            { label: "Valve (0..1)", data: [], yAxisID: "yUnit", tension: 0.2, pointRadius: 0 },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: {
+            legend: { labels: { color: "#e7eef7" } },
+            tooltip: { enabled: true },
+          },
+          scales: {
+            x: { ticks: { color: "#9bb0c6" }, grid: { color: "rgba(255,255,255,0.06)" } },
+            yTemp: {
+              position: "left",
+              ticks: { color: "#9bb0c6" },
+              grid: { color: "rgba(255,255,255,0.06)" },
+              title: { display: true, text: "°C", color: "#9bb0c6" },
+            },
+            yUnit: {
+              position: "right",
+              min: 0, max: 1,
+              ticks: { color: "#9bb0c6" },
+              grid: { drawOnChartArea: false },
+              title: { display: true, text: "0..1", color: "#9bb0c6" },
+            },
+          },
+        },
+      });
+
+      // --- UI elements ---
+      const elTempC = document.getElementById("tempC");
+      const elSetpointC = document.getElementById("setpointC");
+      const elHeaterPower = document.getElementById("heaterPower");
+      const elValveOpen = document.getElementById("valveOpen");
+      const elSensorPill = document.getElementById("sensorPill");
+      const elControlPill = document.getElementById("controlPill");
+
+      const elShotState = document.getElementById("shotState");
+      const elShotProfile = document.getElementById("shotProfile");
+      const elShotStep = document.getElementById("shotStep");
+      const elShotElapsed = document.getElementById("shotElapsed");
+      const elShotMsg = document.getElementById("shotMsg");
+
+      const setpointInput = document.getElementById("setpointInput");
+
+      const profileSelect = document.getElementById("profileSelect");
+      const secondsInput = document.getElementById("secondsInput");
+      const secondsLabel = document.getElementById("secondsLabel");
+
+      // --- Buttons ---
+      document.getElementById("btnEnable").onclick = async () => {
+        await apiPost("/control/enable", { enabled: true });
+      };
+      document.getElementById("btnDisable").onclick = async () => {
+        await apiPost("/control/enable", { enabled: false });
+      };
+      document.getElementById("btnApplySetpoint").onclick = async () => {
+        const v = Number(setpointInput.value);
+        await apiPost("/control/setpoint", { setpoint_c: v });
+      };
+      document.getElementById("btnValveClose").onclick = async () => {
+        await apiPost("/valve", { open_0_to_1: 0.0 });
+      };
+      document.getElementById("btnValveHalf").onclick = async () => {
+        await apiPost("/valve", { open_0_to_1: 0.5 });
+      };
+      document.getElementById("btnValveOpen").onclick = async () => {
+        await apiPost("/valve", { open_0_to_1: 1.0 });
+      };
+      document.getElementById("btnShotStart").onclick = async () => {
+        const name = profileSelect.value;
+        await apiPost(`/shot/start/${encodeURIComponent(name)}`);
+      };
+      document.getElementById("btnShotCancel").onclick = async () => {
+        await apiPost("/shot/cancel");
+      };
+
+      document.getElementById("btnApplyWindow").onclick = async () => {
+        const v = Number(secondsInput.value);
+        secondsLabel.textContent = String(v);
+        // fetch immediately
+        await refreshTelemetry();
+      };
+
+      // --- Profile list ---
+      // If you want this to be dynamic from server later, add an endpoint. For now, hardcode
+      // the known names to match shot_profiles.py.
+// --- Profile list (dynamic from server) ---
+async function loadProfiles() {
+  try {
+    const resp = await apiGet("/shot/profiles");
+    const profiles = resp.profiles ?? [];
+
+    // Clear existing options (if any)
+    profileSelect.innerHTML = "";
+
+    for (const p of profiles) {
+      const opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = p;
+      profileSelect.appendChild(opt);
+    }
+
+    // Pick a reasonable default if present
+    if (profiles.includes("classic_espresso")) {
+      profileSelect.value = "classic_espresso";
+    }
+  } catch (e) {
+    console.error("Failed to load profiles:", e);
+    // fallback (optional)
+    const fallback = ["classic_espresso", "lungo"];
+    profileSelect.innerHTML = "";
+    for (const p of fallback) {
+      const opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = p;
+      profileSelect.appendChild(opt);
+    }
+  }
+}
+
+
+      // --- Data refresh loops ---
+      let lastTelemetryFetch = 0;
+
+      async function refreshState() {
+        const s = await apiGet("/state");
+
+        elTempC.textContent = fmt(s.temp_c, 1);
+        elSetpointC.textContent = fmt(s.setpoint_c, 1);
+        elHeaterPower.textContent = fmt(s.heater_power, 2);
+        elValveOpen.textContent = fmt(s.valve_open, 2);
+
+        // Sensor pill
+        elSensorPill.className = "pill";
+        if (s.temp_ok) {
+          elSensorPill.classList.add("ok");
+          elSensorPill.textContent = "Sensor: OK";
+        } else {
+          elSensorPill.classList.add("bad");
+          elSensorPill.textContent = `Sensor: FAULT`;
+        }
+
+        // Control pill
+        elControlPill.className = "pill";
+        if (s.control_enabled && s.temp_ok) {
+          elControlPill.classList.add("ok");
+          elControlPill.textContent = "Control: ENABLED";
+        } else if (!s.control_enabled) {
+          elControlPill.textContent = "Control: DISABLED";
+        } else {
+          elControlPill.classList.add("warn");
+          elControlPill.textContent = "Control: HOLD (sensor)";
+        }
+      }
+
+      async function refreshShot() {
+        const st = await apiGet("/shot/status");
+        elShotState.textContent = st.state ?? "--";
+        elShotProfile.textContent = st.profile ?? "--";
+        elShotStep.textContent = String(st.step_index ?? 0);
+        elShotElapsed.textContent = fmt(st.total_elapsed_s ?? 0, 1);
+        elShotMsg.textContent = st.message ?? "--";
+      }
+
+      async function refreshTelemetry() {
+        const seconds = Number(secondsInput.value);
+        const now = Date.now();
+        // avoid spamming too fast
+        if (now - lastTelemetryFetch < 400) return;
+        lastTelemetryFetch = now;
+
+        const data = await apiGet(`/telemetry?seconds=${encodeURIComponent(seconds)}`);
+        const points = data.points ?? [];
+
+        // label using seconds from "now" relative, to be stable for chart
+        if (points.length === 0) return;
+
+        const t0 = points[0].ts;
+        const labels = points.map(p => (p.ts - t0).toFixed(1));
+
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = points.map(p => p.temp_c);
+        chart.data.datasets[1].data = points.map(p => p.setpoint_c);
+        chart.data.datasets[2].data = points.map(p => clamp01(p.heater_power));
+        chart.data.datasets[3].data = points.map(p => clamp01(p.valve_open));
+        chart.update();
+      }
+
+      async function loop() {
+        try {
+          await Promise.all([refreshState(), refreshShot()]);
+          await refreshTelemetry();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setTimeout(loop, 500);
+        }
+      }
+
+      // initial
+      secondsLabel.textContent = String(Number(secondsInput.value));
+      loadProfiles();
+      loop();
+    </script>
+  </body>
+</html>
