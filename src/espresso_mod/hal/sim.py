@@ -1,9 +1,11 @@
 from __future__ import annotations
-from dataclasses import dataclass
+
 import random
 import time
+from dataclasses import dataclass
 
-from espresso_mod.hal.base import TempReading, TemperatureSensor, HeaterActuator, ValveActuator
+from espresso_mod.hal.base import HeaterActuator, TemperatureSensor, TempReading, ValveActuator
+
 
 @dataclass
 class SimParams:

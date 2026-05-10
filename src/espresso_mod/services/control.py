@@ -1,9 +1,11 @@
 from __future__ import annotations
-import time
+
 import threading
+import time
 
 from espresso_mod.domain.pid import PID
-from espresso_mod.hal.base import TemperatureSensor, HeaterActuator, ValveActuator
+from espresso_mod.hal.base import HeaterActuator, TemperatureSensor, ValveActuator
+
 
 class ControlLoop:
     def __init__(

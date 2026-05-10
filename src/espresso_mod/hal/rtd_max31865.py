@@ -5,7 +5,9 @@ Implement later using a library (e.g., spidev + MAX31865 driver).
 Keep this module import-safe on non-Pi machines (no GPIO imports at module top).
 """
 from __future__ import annotations
-from espresso_mod.hal.base import TempReading, TemperatureSensor
+
+from espresso_mod.hal.base import TemperatureSensor, TempReading
+
 
 class Max31865RtdSensor(TemperatureSensor):
     def __init__(self, spi_bus: int = 0, spi_dev: int = 0) -> None:

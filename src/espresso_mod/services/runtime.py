@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from espresso_mod.config import settings
-from espresso_mod.hal.sim import SimPlant, SimParams
-from espresso_mod.hal.rtd_max31865 import Max31865RtdSensor
 from espresso_mod.hal.base import HeaterActuator, TemperatureSensor, ValveActuator
+from espresso_mod.hal.rtd_max31865 import Max31865RtdSensor
+from espresso_mod.hal.sim import SimParams, SimPlant
 from espresso_mod.services.control import ControlLoop
-from espresso_mod.services.telemetry import TelemetryBuffer, TelemetrySampler
 from espresso_mod.services.shot_runner import ShotRunner
+from espresso_mod.services.telemetry import TelemetryBuffer, TelemetrySampler
 
 
 class Runtime:

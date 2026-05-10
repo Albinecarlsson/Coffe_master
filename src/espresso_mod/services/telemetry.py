@@ -3,8 +3,8 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Deque, List
 
 from espresso_mod.hal.base import HeaterActuator, TemperatureSensor, ValveActuator
 
@@ -27,18 +27,18 @@ class TelemetryBuffer:
     """
 
     def __init__(self, maxlen: int = 10_000) -> None:
-        self._buf: Deque[TelemetrySample] = deque(maxlen=maxlen)
+        self._buf: deque[TelemetrySample] = deque(maxlen=maxlen)
         self._lock = threading.Lock()
 
     def append(self, sample: TelemetrySample) -> None:
         with self._lock:
             self._buf.append(sample)
 
-    def snapshot_last_seconds(self, seconds: float) -> List[TelemetrySample]:
+    def snapshot_last_seconds(self, seconds: float) -> list[TelemetrySample]:
         cutoff = time.monotonic() - max(0.0, seconds)
         with self._lock:
             # iterate from newest backwards, stop when older than cutoff
-            out_rev: List[TelemetrySample] = []
+            out_rev: list[TelemetrySample] = []
             for s in reversed(self._buf):
                 if s.ts < cutoff:
                     break
@@ -58,8 +58,8 @@ class TelemetrySampler:
         heater: HeaterActuator,
         valve: ValveActuator,
         buffer: TelemetryBuffer,
-        get_setpoint_c: callable,
-        get_control_enabled: callable,
+        get_setpoint_c: Callable[[], float],
+        get_control_enabled: Callable[[], bool],
         hz: int = 10,
     ) -> None:
         self.sensor = sensor

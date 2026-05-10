@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 from pydantic import BaseModel, Field
-from typing import List, Optional
+
+
 class ControlEnable(BaseModel):
     enabled: bool
 
@@ -33,12 +35,12 @@ class TelemetryPoint(BaseModel):
     control_enabled: bool
 
 class TelemetryResponse(BaseModel):
-    points: List[TelemetryPoint]
+    points: list[TelemetryPoint]
 
 class ShotStatus(BaseModel):
     state: str  # "idle" | "running" | "done" | "canceled" | "error"
-    profile: Optional[str] = None
+    profile: str | None = None
     step_index: int = 0
     step_elapsed_s: float = 0.0
     total_elapsed_s: float = 0.0
-    message: Optional[str] = None
+    message: str | None = None

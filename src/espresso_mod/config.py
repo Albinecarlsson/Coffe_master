@@ -1,5 +1,7 @@
-from pydantic import BaseModel
 import os
+
+from pydantic import BaseModel
+
 
 class Settings(BaseModel):
     hardware_mode: str = os.getenv("HARDWARE_MODE", "sim")

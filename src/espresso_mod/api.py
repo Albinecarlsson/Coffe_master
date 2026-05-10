@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Query
 
 from espresso_mod.domain.models import (
     ControlEnable,
     Setpoint,
-    ValveCmd,
+    ShotStatus,
     State,
     TelemetryPoint,
     TelemetryResponse,
-    ShotStatus,
+    ValveCmd,
 )
 from espresso_mod.domain.shot_profiles import SHOT_PROFILES
 from espresso_mod.services.runtime import Runtime
@@ -61,21 +63,21 @@ def telemetry(seconds: float = Query(30.0, ge=0.1, le=3600.0)) -> TelemetryRespo
 
 
 @router.post("/control/enable")
-def control_enable(body: ControlEnable) -> dict:
+def control_enable(body: ControlEnable) -> dict[str, Any]:
     rt = get_runtime()
     rt.control.set_enabled(body.enabled)
     return {"ok": True, "enabled": rt.control.enabled}
 
 
 @router.post("/control/setpoint")
-def control_setpoint(body: Setpoint) -> dict:
+def control_setpoint(body: Setpoint) -> dict[str, Any]:
     rt = get_runtime()
     rt.control.set_setpoint(body.setpoint_c)
     return {"ok": True, "setpoint_c": rt.control.setpoint_c}
 
 
 @router.post("/valve")
-def valve(body: ValveCmd) -> dict:
+def valve(body: ValveCmd) -> dict[str, Any]:
     rt = get_runtime()
     rt.valve.set_open(body.open_0_to_1)
     return {"ok": True, "valve_open": rt.valve.get_open()}
@@ -106,24 +108,24 @@ def shot_status() -> ShotStatus:
 
 
 @router.post("/shot/start/{name}")
-def shot_start(name: str) -> dict:
+def shot_start(name: str) -> dict[str, Any]:
     rt = get_runtime()
     if name not in SHOT_PROFILES:
         raise HTTPException(404, f"Unknown profile '{name}'. Known: {list(SHOT_PROFILES.keys())}")
     try:
         rt.shots.start(name)
     except RuntimeError as e:
-        raise HTTPException(409, str(e))
+        raise HTTPException(409, str(e)) from e
     return {"ok": True, "started": name}
 
 
 @router.post("/shot/cancel")
-def shot_cancel() -> dict:
+def shot_cancel() -> dict[str, Any]:
     rt = get_runtime()
     rt.shots.cancel()
     return {"ok": True}
 
 
 @router.get("/shot/profiles")
-def shot_profiles() -> dict:
+def shot_profiles() -> dict[str, Any]:
     return {"profiles": list(SHOT_PROFILES.keys())}
