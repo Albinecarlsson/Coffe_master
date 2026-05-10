@@ -16,6 +16,7 @@ class SimParams:
     flow_k: float = 0.06            # 1/s (extra cooling when valve open)
     sensor_noise_sigma: float = 0.05 # °C
     max_temp_c: float = 140.0
+    fixed_dt: float | None = None   # If set, use fixed time step instead of wall-clock time
 
 class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator):
     def __init__(self, initial_c: float, params: SimParams):
@@ -26,9 +27,15 @@ class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator):
         self._last_ts = time.monotonic()
 
     def step(self) -> None:
-        now = time.monotonic()
-        dt = max(0.0, now - self._last_ts)
-        self._last_ts = now
+        if self._params.fixed_dt is not None:
+            # Use fixed time step for deterministic testing
+            dt = self._params.fixed_dt
+        else:
+            # Use wall-clock time for real-time simulation
+            now = time.monotonic()
+            dt = max(0.0, now - self._last_ts)
+            self._last_ts = now
+        
         if dt <= 0:
             return
 

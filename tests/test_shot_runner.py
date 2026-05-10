@@ -6,15 +6,17 @@ from espresso_mod.services.shot_runner import ShotRunner
 
 
 def test_shot_runner_runs_and_closes_valve():
-    plant = SimPlant(initial_c=90.0, params=SimParams(ambient_c=22.0))
+    # Use fixed_dt for fast, deterministic simulation
+    plant = SimPlant(initial_c=90.0, params=SimParams(ambient_c=22.0, fixed_dt=0.1))
     control = ControlLoop(plant, plant, plant, hz=50)
     control.start()
 
     runner = ShotRunner(control=control, valve=plant)
     runner.start("classic_espresso")
 
-    # wait for completion
-    for _ in range(200):
+    # wait for completion - classic_espresso is 28s, with 50Hz control and 0.05s sleep
+    # we need enough iterations. Let's wait up to 30 real seconds.
+    for _ in range(600):
         st = runner.status()
         if st.state in ("done", "error", "canceled"):
             break
@@ -28,7 +30,7 @@ def test_shot_runner_runs_and_closes_valve():
 
 
 def test_shot_runner_cancel():
-    plant = SimPlant(initial_c=90.0, params=SimParams(ambient_c=22.0))
+    plant = SimPlant(initial_c=90.0, params=SimParams(ambient_c=22.0, fixed_dt=0.1))
     control = ControlLoop(plant, plant, plant, hz=50)
     control.start()
 
