@@ -1,6 +1,6 @@
 import time
 
-from espresso_mod.hal.sim import SimPlant, SimParams
+from espresso_mod.hal.sim import SimParams, SimPlant
 from espresso_mod.services.control import ControlLoop
 from espresso_mod.services.telemetry import TelemetryBuffer, TelemetrySampler
 

@@ -1,5 +1,6 @@
 from espresso_mod.domain.pid import PID
 
+
 def test_pid_output_clamped():
     pid = PID(kp=10, ki=0, kd=0)
     out = pid.update(setpoint=100, measured=0, dt=0.1)

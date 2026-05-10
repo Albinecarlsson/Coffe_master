@@ -1,4 +1,5 @@
-from espresso_mod.hal.sim import SimPlant, SimParams
+from espresso_mod.hal.sim import SimParams, SimPlant
+
 
 def test_sim_heats_up_with_power():
     plant = SimPlant(initial_c=25.0, params=SimParams(ambient_c=22.0))
