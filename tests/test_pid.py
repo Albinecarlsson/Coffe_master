@@ -7,6 +7,11 @@ def test_pid_output_clamped():
     assert 0.0 <= out <= 1.0
     assert out == 1.0
 
+def test_pid_non_positive_dt_returns_zero():
+    pid = PID(kp=10, ki=0, kd=0)
+    assert pid.update(setpoint=100, measured=0, dt=0.0) == 0.0
+
+
 def test_pid_integral_limits():
     pid = PID(kp=0, ki=10, kd=0, integrator_min=-0.1, integrator_max=0.1)
     for _ in range(100):
