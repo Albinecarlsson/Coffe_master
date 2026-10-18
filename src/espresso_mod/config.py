@@ -35,6 +35,20 @@ class Settings(BaseModel):
     pump_gpio_pin: int = int(os.getenv("PUMP_GPIO_PIN", "22"))
     pump_active_high: bool = _get_bool("PUMP_ACTIVE_HIGH", True)
 
+    # Brew pressure sensor: 0-16 bar ratiometric sender through an ADS1115.
+    # Disable it while the machine is still being wired up.
+    pressure_enabled: bool = _get_bool("PRESSURE_ENABLED", True)
+    pressure_i2c_bus: int = int(os.getenv("PRESSURE_I2C_BUS", "1"))
+    pressure_i2c_address: int = int(os.getenv("PRESSURE_I2C_ADDRESS", "0x48"), 0)
+    pressure_ads_channel: int = int(os.getenv("PRESSURE_ADS_CHANNEL", "0"))
+    # The sender's electrical span and the divider in front of the ADC.
+    pressure_bar_max: float = float(os.getenv("PRESSURE_BAR_MAX", "16.0"))
+    pressure_volts_min: float = float(os.getenv("PRESSURE_VOLTS_MIN", "0.5"))
+    pressure_volts_max: float = float(os.getenv("PRESSURE_VOLTS_MAX", "4.5"))
+    pressure_divider: float = float(os.getenv("PRESSURE_DIVIDER", "2.0"))
+    pressure_ads_pga: float = float(os.getenv("PRESSURE_ADS_PGA", "4.096"))
+    pressure_ads_data_rate: int = int(os.getenv("PRESSURE_ADS_DATA_RATE", "128"))
+
     # Dosing
     # Calibrated brew flow: measure it by timing a pour into a cup on a scale.
     brew_flow_ml_s: float = float(os.getenv("BREW_FLOW_ML_S", "1.1"))

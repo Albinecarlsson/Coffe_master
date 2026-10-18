@@ -52,6 +52,7 @@ class Doser:
         pump: PumpActuator | None = None,
         brew_flow_ml_s: float = 1.1,
         clock: Clock | None = None,
+        on_start: Callable[[], None] | None = None,
         on_finish: Callable[[], None] | None = None,
     ) -> None:
         if brew_flow_ml_s <= 0.0:
@@ -61,6 +62,7 @@ class Doser:
         self.pump = pump
         self.brew_flow_ml_s = float(brew_flow_ml_s)
         self._clock: Clock = clock or SystemClock()
+        self._on_start = on_start
         self._on_finish = on_finish
 
         self._lock = threading.Lock()
@@ -97,6 +99,11 @@ class Doser:
                 started_ts=self._clock.now(),
             )
             self._cancel = False
+
+        # Reset the peak before the first drop, but never let an observer stop a pour.
+        if self._on_start is not None:
+            with contextlib.suppress(Exception):
+                self._on_start()
 
         self._thread = threading.Thread(target=self._run, args=(drink,), daemon=True)
         self._thread.start()

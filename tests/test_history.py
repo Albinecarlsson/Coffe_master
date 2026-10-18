@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from espresso_mod.services.history import ShotHistory
@@ -50,6 +52,44 @@ def test_entries_come_back_newest_first(tmp_path):
         history.record(kind="drink", name=name, state="done", elapsed_s=1.0)
 
     assert [e.name for e in history.recent()] == ["lungo", "espresso", "ristretto"]
+
+
+def test_record_persists_the_peak_pressure(tmp_path):
+    history = _history(tmp_path)
+
+    history.record(kind="drink", name="espresso", state="done", elapsed_s=27.0, peak_bar=9.4)
+
+    [entry] = history.recent()
+    assert entry.peak_bar == pytest.approx(9.4)
+
+
+def test_an_old_database_gains_the_pressure_column(tmp_path):
+    """The user's existing history predates pressure logging."""
+    path = tmp_path / "old" / "history.db"
+    path.parent.mkdir()
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE pours ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " finished_at REAL NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL,"
+        " state TEXT NOT NULL, target_ml REAL, delivered_ml REAL,"
+        " elapsed_s REAL NOT NULL, message TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO pours (finished_at, kind, name, state, elapsed_s)"
+        " VALUES (1.0, 'drink', 'espresso', 'done', 27.0)"
+    )
+    conn.commit()
+    conn.close()
+
+    history = ShotHistory(path)
+
+    [entry] = history.recent()
+    assert entry.name == "espresso"
+    assert entry.peak_bar is None
+
+    history.record(kind="drink", name="lungo", state="done", elapsed_s=50.0, peak_bar=8.1)
+    assert history.recent(1)[0].peak_bar == pytest.approx(8.1)
 
 
 def test_limit_caps_the_result(tmp_path):

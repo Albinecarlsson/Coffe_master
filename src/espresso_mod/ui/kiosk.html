@@ -388,6 +388,63 @@
         transition: width 0.2s linear;
       }
 
+      /* Brew pressure: the screen is replacing the mechanical gauge, so this is
+         the instrument during a shot, not a decoration. */
+      .pressure-block { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+      .pressure-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 7px;
+      }
+      .pressure-label {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .pressure-reading {
+        font-size: 21px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+      .pressure-reading .unit { font-size: 12px; font-weight: 600; color: var(--muted); }
+      .pressure-track {
+        position: relative;
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .pressure-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+        transition: width 0.18s linear, background 0.2s ease;
+      }
+      .pressure-fill.hot { background: linear-gradient(90deg, var(--accent), var(--danger)); }
+      .pressure-mark {
+        position: absolute;
+        left: 56.25%; /* 9 bar of 16 */
+        top: -3px;
+        bottom: -3px;
+        width: 2px;
+        border-radius: 2px;
+        background: rgba(244, 236, 227, 0.8);
+        pointer-events: none;
+      }
+      .pressure-scale {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 5px;
+        font-size: 10px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
       .pour-foot {
         display: flex;
         align-items: center;
@@ -538,6 +595,20 @@
           <span class="of">/ <span id="pourTarget">0</span> ml</span>
         </div>
         <div class="track"><div id="pourProgress"></div></div>
+
+        <div class="pressure-block">
+          <div class="pressure-head">
+            <span class="pressure-label">Pressure</span>
+            <span class="pressure-reading">
+              <span id="pourBar">--</span><span class="unit"> bar</span>
+            </span>
+          </div>
+          <div class="pressure-track">
+            <div id="pourBarFill" class="pressure-fill"></div>
+            <div class="pressure-mark"></div>
+          </div>
+          <div class="pressure-scale"><span>0</span><span>8</span><span>16</span></div>
+        </div>
 
         <div class="pour-foot">
           <span id="pourTime" class="pour-time">0.0 s</span>
@@ -730,8 +801,9 @@
           const amount = e.delivered_ml != null
             ? `${e.delivered_ml.toFixed(0)} ml`
             : `${e.elapsed_s.toFixed(0)} s`;
+          const peak = e.peak_bar != null ? ` · ${e.peak_bar.toFixed(1)} bar` : "";
           const outcome = e.state === "done" ? "" : ` · ${e.state}`;
-          detail.textContent = `${amount}${outcome} · ${relativeTime(e.finished_at)}`;
+          detail.textContent = `${amount}${peak}${outcome} · ${relativeTime(e.finished_at)}`;
           chip.append(name, detail);
           wrap.appendChild(chip);
         }
@@ -775,7 +847,7 @@
         for (const b of document.querySelectorAll(".drink")) b.disabled = !canPour;
       }
 
-      function fillPourCard(pour, label, tone) {
+      function fillPourCard(pour, label, tone, status) {
         const drink = drinks.find((d) => d.key === pour.drink);
         el("pourName").textContent = drink ? drink.name : pour.drink || "Pour";
         el("pourState").textContent = label;
@@ -789,16 +861,25 @@
           : 0;
         el("pourProgress").style.width = `${(pct * 100).toFixed(1)}%`;
         setCupLevel(el("pourCup"), pct);
+
+        // The screen replaces the mechanical gauge, so pressure gets a real
+        // readout here: 0-16 bar with a mark at the usual 9 bar target.
+        const bar = status && status.pressure_ok ? status.pressure_bar : null;
+        const barPct = bar == null ? 0 : Math.max(0, Math.min(1, bar / 16));
+        el("pourBar").textContent = bar == null ? "--" : bar.toFixed(1);
+        el("pourBarFill").style.width = `${(barPct * 100).toFixed(1)}%`;
+        el("pourBarFill").classList.toggle("hot", bar != null && bar > 13);
       }
 
-      function renderPour(pour) {
+      function renderPour(status) {
+        const pour = status.pour;
         const prev = pourState;
         pourState = pour.state;
         const overlay = el("pourOverlay");
 
         if (pour.state === "pouring") {
           overlayHideAt = 0;
-          fillPourCard(pour, "Brewing", "live");
+          fillPourCard(pour, "Brewing", "live", status);
           el("btnCancel").style.display = "";
           overlay.classList.add("show");
           return;
@@ -808,7 +889,7 @@
           // just finished: show the result for a moment, then get out of the way
           overlayHideAt = Date.now() + (pour.state === "done" ? 2600 : 4200);
           const label = pour.state === "done" ? "Done" : pour.state === "canceled" ? "Stopped" : "Error";
-          fillPourCard(pour, label, pour.state === "done" ? "done" : "stopped");
+          fillPourCard(pour, label, pour.state === "done" ? "done" : "stopped", status);
           el("btnCancel").style.display = "none";
           overlay.classList.add("show");
           loadHistory();
@@ -816,7 +897,7 @@
         }
 
         if (overlayHideAt && Date.now() < overlayHideAt) {
-          fillPourCard(pour, el("pourState").textContent, pour.state === "done" ? "done" : "stopped");
+          fillPourCard(pour, el("pourState").textContent, pour.state === "done" ? "done" : "stopped", status);
           return;
         }
 
@@ -830,7 +911,7 @@
         try {
           const status = await apiGet("/kiosk/status");
           renderReady(status);
-          renderPour(status.pour);
+          renderPour(status);
         } catch (e) {
           el("readyPill").className = "pill bad";
           el("readyPill").textContent = "Offline";

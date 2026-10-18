@@ -21,6 +21,7 @@ from espresso_mod.domain.models import (
     ValveCmd,
 )
 from espresso_mod.domain.shot_profiles import SHOT_PROFILES
+from espresso_mod.hal.base import PressureReading
 from espresso_mod.services.runtime import Runtime
 
 router = APIRouter()
@@ -35,10 +36,21 @@ def get_runtime() -> Runtime:
     return _runtime
 
 
+def _pressure(rt: Runtime) -> PressureReading:
+    """Read the brew-pressure sender, which is optional.
+
+    A machine without one reports a fault instead of a plausible-looking zero.
+    """
+    if rt.pressure is None:
+        return PressureReading(bar=0.0, ok=False, fault="No pressure sensor configured")
+    return rt.pressure.read_pressure()
+
+
 @router.get("/state", response_model=State)
 def state() -> State:
     rt = get_runtime()
     reading = rt.sensor.read()
+    pressure = _pressure(rt)
     return State(
         temp_c=reading.celsius,
         temp_ok=reading.ok,
@@ -48,6 +60,9 @@ def state() -> State:
         setpoint_c=rt.control.setpoint_c,
         control_enabled=rt.control.enabled,
         control_error=rt.control.last_error,
+        pressure_bar=pressure.bar,
+        pressure_ok=pressure.ok,
+        pressure_fault=pressure.fault,
     )
 
 
@@ -64,6 +79,8 @@ def telemetry(seconds: float = Query(30.0, ge=0.1, le=3600.0)) -> TelemetryRespo
             valve_open=s.valve_open,
             setpoint_c=s.setpoint_c,
             control_enabled=s.control_enabled,
+            pressure_bar=s.pressure_bar,
+            pressure_ok=s.pressure_ok,
         )
         for s in samples
     ]
@@ -156,6 +173,7 @@ def _ready(rt: Runtime, target_c: float) -> bool:
 def _kiosk_status(rt: Runtime) -> KioskStatus:
     reading = rt.sensor.read()
     setpoint_c = rt.control.setpoint_c
+    pressure = _pressure(rt)
     return KioskStatus(
         temp_c=reading.celsius,
         temp_ok=reading.ok,
@@ -164,6 +182,9 @@ def _kiosk_status(rt: Runtime) -> KioskStatus:
         control_enabled=rt.control.enabled,
         control_error=rt.control.last_error,
         ready=reading.ok and abs(reading.celsius - setpoint_c) <= settings.ready_tolerance_c,
+        pressure_bar=pressure.bar,
+        pressure_ok=pressure.ok,
+        pressure_fault=pressure.fault,
         pour=_pour_status(rt),
     )
 

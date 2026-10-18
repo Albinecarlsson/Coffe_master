@@ -23,6 +23,10 @@ class State(BaseModel):
     # Set when the control loop caught an exception; it cuts the heat and keeps
     # running, so this is the only sign that something is wrong.
     control_error: str | None = None
+    # None when no pressure sender is configured or it could not be read.
+    pressure_bar: float | None = None
+    pressure_ok: bool = False
+    pressure_fault: str | None = None
 
 
 class TelemetryQuery(BaseModel):
@@ -36,6 +40,8 @@ class TelemetryPoint(BaseModel):
     valve_open: float
     setpoint_c: float
     control_enabled: bool
+    pressure_bar: float | None = None
+    pressure_ok: bool = True
 
 class TelemetryResponse(BaseModel):
     points: list[TelemetryPoint]
@@ -80,6 +86,9 @@ class KioskStatus(BaseModel):
     control_enabled: bool
     control_error: str | None = None
     ready: bool
+    pressure_bar: float | None = None
+    pressure_ok: bool = False
+    pressure_fault: str | None = None
     pour: PourStatus
 
 
@@ -95,6 +104,7 @@ class HistoryEntry(BaseModel):
     delivered_ml: float | None = None
     elapsed_s: float
     message: str | None = None
+    peak_bar: float | None = None
 
 class HistoryResponse(BaseModel):
     entries: list[HistoryEntry]

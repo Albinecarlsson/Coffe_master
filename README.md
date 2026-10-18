@@ -32,7 +32,7 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 - ✅ **Hardware Abstraction Layer** – swap between simulator and real GPIO/sensors without code changes
 - ✅ **Drink Catalogue & Dosing** – ristretto/espresso/doppio/lungo, poured by volume
 - ✅ **Shot Runner** – state machine for automated espresso shot execution
-- ✅ **Telemetry System** – time-series data logging for temperature, power, and valve state
+- ✅ **Telemetry System** – time-series data logging for temperature, power, valve state and pressure
 - ✅ **HTTP API** – control and monitor via RESTful endpoints (FastAPI)
 - ✅ **Kiosk UI** – touchscreen drink picker with live temperature and readiness gating
 - ✅ **Thermal Simulation** – realistic boiler physics model for offline development
@@ -40,10 +40,11 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 - ✅ **GPIO Actuators** – time-proportioned SSR heater, plus solenoid valve and pump for `HARDWARE_MODE=rtd`
 - ✅ **Pump-Pulsed Preinfusion** – wet the puck in bursts before the measured pour
 - ✅ **Shot History** – every shot and pour appended to SQLite, with the last few on the kiosk
+- ✅ **Brew Pressure Monitoring** – 0–16 bar sender through an ADS1115, live on both UIs and logged per shot
 
 ### Roadmap
 - 🔜 WebSocket push for real-time UI updates (the UI currently polls)
-- 🔜 Pressure sensor integration (ADC-based)
+- 🔜 Pressure-guided preinfusion (stop the pulse when the puck is pressurised)
 - 🔜 Volumetric dosing from a real flow meter (today it is time-based)
 - 🔜 Gravimetric dosing (load cell under the drip tray)
 - 🔜 Hot-water path, so americanos and tea can be poured in one action
@@ -151,14 +152,18 @@ like the machine rather than a dashboard: espresso browns, crema accents, a seri
 wordmark and a drawn cup per drink whose fill matches its volume. The header shows
 the time, a temperature ring that fills as the boiler warms, and a readiness pill.
 Tapping a tile opens a full-screen pour card with a cup that fills as the shot
-lands, delivered millilitres, a progress bar and a stop button; the result lingers
+lands, delivered millilitres, a progress bar and a stop button. Because the
+mechanical gauge goes away when the screen takes its place, the card also shows
+brew pressure on a 0–16 bar scale with a mark at 9 bar, turning amber-red above
+13 bar — a choked shot is visible while it happens, not after. The result lingers
 for a moment, then clears itself. Tiles disable until the boiler is at temperature,
 or the pour can be forced from the toast that appears. Under the tiles, the last few
-drinks come back from the shot history as chips.
+drinks come back from the shot history as chips, including the peak pressure.
 
 **Engineer dashboard — `http://127.0.0.1:8000/`** shares the same warm palette and
-shows live temperature, heater power and valve state, lets you set the setpoint and
-toggle the PID loop, runs any shot profile, and plots recent telemetry.
+shows live temperature, heater power, valve state and pressure (number plus a 0–16
+bar meter), lets you set the setpoint and toggle the PID loop, runs any shot
+profile, and plots recent telemetry with pressure on its own axis.
 
 Both poll the REST API; moving to WebSocket push is on the roadmap. For a panel on
 the machine, run Chromium fullscreen pointed at `/kiosk`.
@@ -177,18 +182,21 @@ espresso_mod/
 │   ├── pid.py          # PID controller implementation
 │   ├── clock.py        # Injectable time source (deterministic timing)
 │   ├── pulse.py        # Pump on/off pattern for preinfusion
+│   ├── pressure.py     # Volts-to-bar maths for a ratiometric sender
 │   ├── drinks.py       # Drink catalogue (volumes and temperatures)
 │   └── shot_profiles.py # Shot profile definitions
 ├── hal/                # Hardware Abstraction Layer
 │   ├── base.py         # Abstract interfaces
-│   ├── sim.py          # Thermal simulator (default)
+│   ├── sim.py          # Thermal and pressure simulator (default)
 │   ├── gpio.py         # SSR heater, solenoid valve and pump over GPIO
+│   ├── pressure_ads1115.py # Brew pressure sender over I2C (ADS1115)
 │   └── rtd_max31865.py # MAX31865 RTD sensor over SPI (PT100/PT1000)
 ├── services/           # Orchestration & business logic
 │   ├── control.py      # PID control loop
 │   ├── doser.py        # Volumetric pour control
 │   ├── history.py      # SQLite shot history
 │   ├── pacing.py       # Cancellable waits and pump pulsing
+│   ├── peak.py         # Peak pressure for the shot in progress
 │   ├── shot_runner.py  # Shot execution state machine
 │   ├── telemetry.py    # Data history tracking
 │   └── runtime.py      # Service container & lifecycle
@@ -225,7 +233,7 @@ ruff check .            # Linting
 ## 🛠️ Hardware Setup
 
 `HARDWARE_MODE=sim` needs no hardware at all. To drive a real machine, enable SPI
-(`raspi-config` → Interface Options) and install the optional dependencies:
+and I2C (`raspi-config` → Interface Options) and install the optional dependencies:
 
 ```bash
 pip install -e ".[hardware]"   # Raspberry Pi only
@@ -248,6 +256,14 @@ Then set `HARDWARE_MODE=rtd` in `.env` and map the hardware to your board:
 | `BREW_FLOW_ML_S` | `1.1` | Calibrated flow used to convert volume into pump seconds |
 | `READY_TOLERANCE_C` | `2.0` | How close to setpoint the boiler must be before a pour is allowed |
 | `HISTORY_DB_PATH` | `data/history.db` | SQLite file for shot history; created on first use |
+| `PRESSURE_ENABLED` | `true` | Set `false` while no sender is fitted; the UI shows a dash, not a fake 0 bar |
+| `PRESSURE_I2C_BUS` / `PRESSURE_I2C_ADDRESS` | `1` / `0x48` | ADS1115 bus and address (`0x48`–`0x4B`) |
+| `PRESSURE_ADS_CHANNEL` | `0` | Single-ended input `AIN0`–`AIN3` |
+| `PRESSURE_BAR_MAX` | `16.0` | The sender's rated span |
+| `PRESSURE_VOLTS_MIN` / `PRESSURE_VOLTS_MAX` | `0.5` / `4.5` | Sender output at 0 bar and at full scale |
+| `PRESSURE_DIVIDER` | `2.0` | Sender volts ÷ ADC volts (2.0 for a 10k/10k divider) |
+| `PRESSURE_ADS_PGA` | `4.096` | ADS1115 full-scale range in volts |
+| `PRESSURE_ADS_DATA_RATE` | `128` | Conversions per second (8…860) |
 
 ### MAX31865 RTD sensor
 
@@ -283,6 +299,46 @@ pour. `ShotStep.pump_on=False` gives a plain dwell. The timings in
 basket and the grind, so tune them on the bench (Phase 4 in
 [docs/renovation.md](docs/renovation.md)).
 
+### Brew pressure
+
+The physical manometer is in the way of the touchscreen, so a 0–16 bar sender
+takes its place on the group circuit and the screen becomes the gauge. A typical
+sender is ratiometric: 0.5 V at 0 bar, 4.5 V at 16 bar, on 5 V. The ADS1115 runs
+at 3.3 V with the Pi, so the signal goes through a **2:1 divider** first
+(`PRESSURE_DIVIDER=2.0`). Wiring:
+
+```
+sender V+  -> 5 V            ADS1115 VDD -> 3.3 V
+sender GND -> GND            ADS1115 GND -> GND (common)
+sender S   -> 10k -> AIN0    ADS1115 SDA/SCL -> Pi (address 0x48)
+                    10k -> GND
+                    100 nF from AIN0 to GND
+```
+
+The chip stays in continuous-conversion mode (128 SPS by default), so sampling is a
+two-byte register read rather than a blocking conversion — the telemetry thread and
+the web API both read it. It reports `ok=False` for the first conversions after
+startup, for a signal below 0.2 V (sender unplugged), above 4.8 V (wiring or
+divider fault) and for an I2C error. Both UIs show a dash instead of a
+plausible-looking 0.0 bar when that happens.
+
+Pressure is **monitoring only**: a vibration pump is not dimmable, so nothing in the
+control path uses the reading yet. It is in the telemetry stream on its own axis,
+in `/state` and `/kiosk/status`, and the peak of each shot or pour is written to
+history (`peak_bar`). That is the number to watch when you change the grind: a
+shot that pins at 13–14 bar is choked, and one that never reaches 5 bar is
+channeling or too coarse.
+
+Calibrate by reading the sender at rest (0 bar) and at the pump's dead-head or
+against a known gauge, then adjust `PRESSURE_VOLTS_MIN` / `PRESSURE_VOLTS_MAX`.
+Set `PRESSURE_ENABLED=false` to run without a sender until it is fitted.
+
+**Safety:** the sender sees brew pressure and near-boiling water. Use a part rated
+for at least 16 bar and 120 °C with brass or stainless wetted parts, fit it with the
+right thread (G1/4 or 1/8" BSP — check the port), and leak-test with the case open
+before closing the machine. If in doubt, keep the mechanical gauge on a tee: a
+leak inside the case next to mains wiring is the worst failure mode in this build.
+
 ### Pump and dosing
 
 The pump also sits on the mains side behind its own relay, so `PUMP_GPIO_PIN` only
@@ -311,6 +367,10 @@ created on the first pour, so nothing is written until the machine has actually 
 coffee. `GET /history?limit=20` returns the newest first; the kiosk shows the last
 six. A write failure is logged nowhere and deliberately ignored — history is an
 observer, and a full disk must not turn a completed shot into an error.
+
+Each row also keeps the **peak brew pressure** for that shot. The database from
+before pressure logging is migrated in place (one `ALTER TABLE`) the next time it is
+read or written, so existing history is not lost.
 
 ### Control-loop faults
 

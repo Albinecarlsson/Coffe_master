@@ -53,3 +53,53 @@ def test_the_pump_starts_on():
     plant = SimPlant(initial_c=25.0, params=SimParams(fixed_dt=0.1))
 
     assert plant.get_on() is True
+
+
+def test_the_sim_builds_pressure_while_water_flows():
+    plant = SimPlant(initial_c=95.0, params=SimParams(fixed_dt=0.05))
+    plant.set_open(1.0)
+
+    for _ in range(60):  # 3 s, several rise time constants
+        plant.read()
+
+    assert plant.read_pressure().bar > 8.5
+
+
+def test_the_pressure_bleeds_off_when_the_pump_stops():
+    plant = SimPlant(initial_c=95.0, params=SimParams(fixed_dt=0.05))
+    plant.set_open(1.0)
+    for _ in range(60):
+        plant.read()
+
+    plant.set_on(False)
+    for _ in range(40):  # 2 s
+        plant.read()
+
+    assert plant.read_pressure().bar < 0.5
+
+
+def test_the_pressure_stays_at_zero_with_the_valve_closed():
+    plant = SimPlant(initial_c=95.0, params=SimParams(fixed_dt=0.05))
+
+    for _ in range(40):
+        plant.read()
+
+    assert plant.read_pressure().bar < 0.2
+
+
+def test_the_sim_pressure_pulses_with_the_pump():
+    """Preinfusion pulses the pump; the pressure trace should pulse too."""
+    plant = SimPlant(initial_c=95.0, params=SimParams(fixed_dt=0.05))
+    plant.set_open(1.0)
+
+    for _ in range(20):
+        plant.read()
+    high = plant.read_pressure().bar
+
+    plant.set_on(False)
+    for _ in range(20):
+        plant.read()
+    low = plant.read_pressure().bar
+
+    assert high > 3.0
+    assert low < high / 2

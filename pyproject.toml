@@ -22,6 +22,7 @@ dev = [
 hardware = [
   "spidev>=3.6",
   "gpiozero>=2.0",
+  "smbus2>=0.4",
 ]
 
 [tool.ruff]
@@ -43,7 +44,7 @@ disallow_any_generics = true
 # "hardware" extra); the drivers import them lazily so the package stays
 # importable elsewhere.
 [[tool.mypy.overrides]]
-module = ["spidev", "gpiozero"]
+module = ["spidev", "gpiozero", "smbus2"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

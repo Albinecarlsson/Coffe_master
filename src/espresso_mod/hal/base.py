@@ -13,6 +13,17 @@ class TempReading:
 class TemperatureSensor(Protocol):
     def read(self) -> TempReading: ...
 
+@dataclass(frozen=True)
+class PressureReading:
+    bar: float
+    ok: bool = True
+    fault: str | None = None
+
+class PressureSensor(Protocol):
+    # Named rather than `read` because the simulated plant implements both this
+    # and TemperatureSensor, and the two readings are not interchangeable.
+    def read_pressure(self) -> PressureReading: ...
+
 class HeaterActuator(Protocol):
     def set_power(self, power_0_to_1: float) -> None: ...
     def get_power(self) -> float: ...

@@ -41,6 +41,7 @@ class ShotRunner:
         clock: Clock | None = None,
         *,
         pump: PumpActuator | None = None,
+        on_start: Callable[[], None] | None = None,
         on_finish: Callable[[], None] | None = None,
     ) -> None:
         self.control = control
@@ -48,6 +49,7 @@ class ShotRunner:
         # None means valve-only: the plant or test double models the flow itself.
         self.pump = pump
         self._clock: Clock = clock or SystemClock()
+        self._on_start = on_start
         self._on_finish = on_finish
 
         self._lock = threading.Lock()
@@ -76,6 +78,11 @@ class ShotRunner:
                 raise RuntimeError("Shot already running")
             self._state = _RunnerState(state="running", profile=name, step_index=0)
             self._cancel = False
+
+        # Reset the peak before the first drop, but never let an observer stop a shot.
+        if self._on_start is not None:
+            with contextlib.suppress(Exception):
+                self._on_start()
 
         self._thread = threading.Thread(target=self._run_profile, args=(name, profile), daemon=True)
         self._thread.start()

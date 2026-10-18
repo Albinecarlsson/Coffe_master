@@ -107,6 +107,40 @@
       .kv .k { color: var(--muted); font-size: 13px; }
       .kv .v { font-size: 22px; font-weight: 700; }
       .kv .small { font-size: 13px; font-weight: 600; color: var(--muted); }
+      .pressure-meter {
+        position: relative;
+        height: 8px;
+        margin-top: 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.07);
+      }
+      .pressure-meter > #pressureFill {
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #c9803c, var(--accent));
+        transition: width 0.15s linear;
+      }
+      .pressure-meter > #pressureFill.hot {
+        background: linear-gradient(90deg, var(--accent), var(--danger));
+      }
+      .pressure-meter .pressure-mark {
+        position: absolute;
+        left: 56.25%; /* 9 bar of 16 */
+        top: -3px;
+        bottom: -3px;
+        width: 2px;
+        border-radius: 2px;
+        background: rgba(244, 236, 227, 0.8);
+      }
+      .pressure-scale {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
       .pill {
         padding: 6px 10px;
         border-radius: 999px;
@@ -185,18 +219,29 @@
         <section class="card">
           <h2>Live</h2>
           <div class="split">
-            <div class="kv">
-              <div class="k">Temperature</div>
-              <div class="v"><span id="tempC">--</span><span class="small"> °C</span></div>
+            <div>
+              <div class="kv">
+                <div class="k">Temperature</div>
+                <div class="v"><span id="tempC">--</span><span class="small"> °C</span></div>
 
-              <div class="k">Setpoint</div>
-              <div class="v"><span id="setpointC">--</span><span class="small"> °C</span></div>
+                <div class="k">Setpoint</div>
+                <div class="v"><span id="setpointC">--</span><span class="small"> °C</span></div>
 
-              <div class="k">Heater power</div>
-              <div class="v"><span id="heaterPower">--</span><span class="small"> (0..1)</span></div>
+                <div class="k">Heater power</div>
+                <div class="v"><span id="heaterPower">--</span><span class="small"> (0..1)</span></div>
 
-              <div class="k">Valve open</div>
-              <div class="v"><span id="valveOpen">--</span><span class="small"> (0..1)</span></div>
+                <div class="k">Valve open</div>
+                <div class="v"><span id="valveOpen">--</span><span class="small"> (0..1)</span></div>
+
+                <div class="k">Pressure</div>
+                <div class="v"><span id="pressureBar">--</span><span class="small"> bar</span></div>
+              </div>
+
+              <div class="pressure-meter" title="Brew pressure: 0-16 bar, mark at 9 bar">
+                <div id="pressureFill"></div>
+                <span class="pressure-mark"></span>
+              </div>
+              <div class="pressure-scale"><span>0</span><span>9</span><span>16 bar</span></div>
             </div>
 
             <div>
@@ -325,6 +370,7 @@
             { label: "Setpoint (°C)", data: [], yAxisID: "yTemp", tension: 0.2, pointRadius: 0, borderColor: "#e8695c", backgroundColor: "rgba(232,105,92,0.12)", borderWidth: 2 },
             { label: "Heater (0..1)", data: [], yAxisID: "yUnit", tension: 0.2, pointRadius: 0, borderColor: "#7cc48c", backgroundColor: "rgba(124,196,140,0.12)", borderWidth: 2 },
             { label: "Valve (0..1)", data: [], yAxisID: "yUnit", tension: 0.2, pointRadius: 0, borderColor: "#8fa6d8", backgroundColor: "rgba(143,166,216,0.12)", borderWidth: 2 },
+            { label: "Pressure (bar)", data: [], yAxisID: "yBar", tension: 0.2, pointRadius: 0, borderColor: "#6ec7c9", backgroundColor: "rgba(110,199,201,0.12)", borderWidth: 2 },
           ],
         },
         options: {
@@ -346,9 +392,14 @@
             yUnit: {
               position: "right",
               min: 0, max: 1,
-              ticks: { color: "#bda895" },
+              ticks: { color: "#8fa6d8" },
               grid: { drawOnChartArea: false },
-              title: { display: true, text: "0..1", color: "#bda895" },
+            },
+            yBar: {
+              position: "right",
+              min: 0, max: 16,
+              ticks: { color: "#6ec7c9" },
+              grid: { drawOnChartArea: false },
             },
           },
         },
@@ -359,6 +410,8 @@
       const elSetpointC = document.getElementById("setpointC");
       const elHeaterPower = document.getElementById("heaterPower");
       const elValveOpen = document.getElementById("valveOpen");
+      const elPressureBar = document.getElementById("pressureBar");
+      const elPressureFill = document.getElementById("pressureFill");
       const elSensorPill = document.getElementById("sensorPill");
       const elControlPill = document.getElementById("controlPill");
 
@@ -458,6 +511,14 @@ async function loadProfiles() {
         elHeaterPower.textContent = fmt(s.heater_power, 2);
         elValveOpen.textContent = fmt(s.valve_open, 2);
 
+        // Pressure is optional: show a dash when the sender is absent or faulted
+        // rather than a reassuring 0.0 bar.
+        const pressureOk = Boolean(s.pressure_ok) && Number.isFinite(s.pressure_bar);
+        elPressureBar.textContent = pressureOk ? fmt(s.pressure_bar, 1) : "--";
+        const barPct = pressureOk ? Math.max(0, Math.min(1, s.pressure_bar / 16)) : 0;
+        elPressureFill.style.width = `${(barPct * 100).toFixed(1)}%`;
+        elPressureFill.classList.toggle("hot", pressureOk && s.pressure_bar > 13);
+
         // Sensor pill
         elSensorPill.className = "pill";
         if (s.temp_ok) {
@@ -518,6 +579,7 @@ async function loadProfiles() {
         chart.data.datasets[1].data = points.map(p => p.setpoint_c);
         chart.data.datasets[2].data = points.map(p => clamp01(p.heater_power));
         chart.data.datasets[3].data = points.map(p => clamp01(p.valve_open));
+        chart.data.datasets[4].data = points.map(p => (p.pressure_ok ? p.pressure_bar : null));
         chart.update();
       }
 

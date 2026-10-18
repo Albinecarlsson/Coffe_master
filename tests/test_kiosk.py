@@ -87,6 +87,8 @@ def test_kiosk_status_reports_readiness_and_idle_pour(hot_client):
     assert body["ready"] is True
     assert body["pour"]["state"] == "idle"
     assert body["pour"]["delivered_ml"] == 0.0
+    assert body["pressure_ok"] is True
+    assert body["pressure_bar"] >= 0.0
 
 
 def test_kiosk_status_is_not_ready_on_a_cold_boiler(client):
@@ -226,6 +228,16 @@ def test_a_pour_is_recorded_in_history(hot_client):
     assert entry["state"] == "done"
     assert entry["delivered_ml"] == pytest.approx(30.0)
     assert entry["message"] == "Poured 30 ml"
+
+
+def test_history_reports_the_peak_pressure(client, runtime):
+    runtime.history.record(
+        kind="drink", name="espresso", state="done", elapsed_s=27.0, peak_bar=9.4
+    )
+
+    [entry] = client.get("/history").json()["entries"]
+
+    assert entry["peak_bar"] == pytest.approx(9.4)
 
 
 def test_a_shot_is_recorded_in_history(client):

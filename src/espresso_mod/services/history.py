@@ -27,12 +27,15 @@ CREATE TABLE IF NOT EXISTS pours (
     target_ml    REAL,
     delivered_ml REAL,
     elapsed_s    REAL    NOT NULL,
-    message      TEXT
+    message      TEXT,
+    peak_bar     REAL
 )
 """
 
 # Column order must match HistoryEntry's positional constructor below.
-_COLUMNS = "id, finished_at, kind, name, state, target_ml, delivered_ml, elapsed_s, message"
+_COLUMNS = (
+    "id, finished_at, kind, name, state, target_ml, delivered_ml, elapsed_s, message, peak_bar"
+)
 
 
 class ShotHistory:
@@ -51,17 +54,19 @@ class ShotHistory:
         target_ml: float | None = None,
         delivered_ml: float | None = None,
         message: str | None = None,
+        peak_bar: float | None = None,
         finished_at: float | None = None,
     ) -> None:
         """Append one finished pour. Creates the database and directory lazily."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         conn = self._connect()
         try:
-            conn.execute(_SCHEMA)
+            self._ensure_schema(conn)
             conn.execute(
                 "INSERT INTO pours"
-                " (finished_at, kind, name, state, target_ml, delivered_ml, elapsed_s, message)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " (finished_at, kind, name, state, target_ml, delivered_ml, elapsed_s,"
+                " message, peak_bar)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     time.time() if finished_at is None else finished_at,
                     kind,
@@ -71,6 +76,7 @@ class ShotHistory:
                     delivered_ml,
                     elapsed_s,
                     message,
+                    peak_bar,
                 ),
             )
             conn.commit()
@@ -83,6 +89,7 @@ class ShotHistory:
             return []
         conn = self._connect()
         try:
+            self._ensure_schema(conn)
             rows = conn.execute(
                 f"SELECT {_COLUMNS} FROM pours ORDER BY id DESC LIMIT ?",
                 (int(limit),),
@@ -90,6 +97,20 @@ class ShotHistory:
         finally:
             conn.close()
         return [self._to_entry(row) for row in rows]
+
+    @staticmethod
+    def _ensure_schema(conn: sqlite3.Connection) -> None:
+        """Create the table, and add columns introduced after a database was made.
+
+        The user already has a history database from before pressure logging, so
+        ``CREATE TABLE IF NOT EXISTS`` alone is not enough: existing files need
+        the new column added in place.
+        """
+        conn.execute(_SCHEMA)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(pours)")}
+        if "peak_bar" not in columns:
+            conn.execute("ALTER TABLE pours ADD COLUMN peak_bar REAL")
+        conn.commit()
 
     @staticmethod
     def _to_entry(row: tuple[Any, ...]) -> HistoryEntry:
@@ -103,6 +124,7 @@ class ShotHistory:
             delivered_ml=row[6],
             elapsed_s=row[7],
             message=row[8],
+            peak_bar=row[9],
         )
 
     def _connect(self) -> sqlite3.Connection:

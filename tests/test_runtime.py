@@ -7,14 +7,26 @@ import pytest
 
 from espresso_mod.config import settings
 from espresso_mod.domain.drinks import DRINKS
-from espresso_mod.hal.base import TempReading
+from espresso_mod.hal.base import PressureReading, TempReading
 from espresso_mod.hal.gpio import GpioHeater, GpioPump, GpioValve
 from espresso_mod.services import runtime as runtime_module
+from espresso_mod.services.doser import PourState
 
 
 class FakeSensor:
     def read(self) -> TempReading:
         return TempReading(celsius=20.0, ok=True)
+
+
+class FakePressure:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def read_pressure(self) -> PressureReading:
+        return PressureReading(bar=8.6, ok=True)
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class FakePin:
@@ -54,6 +66,7 @@ def test_rtd_mode_builds_the_real_hardware_stack(monkeypatch):
     monkeypatch.setattr(settings, "heater_window_s", 0.02)
     monkeypatch.setattr(runtime_module, "open_sensor", lambda **kwargs: FakeSensor())
     monkeypatch.setattr(runtime_module, "open_output_pin", fake_open_pin)
+    monkeypatch.setattr(runtime_module, "open_pressure_sensor", lambda **kwargs: FakePressure())
 
     runtime = runtime_module.Runtime()
     try:
@@ -61,6 +74,7 @@ def test_rtd_mode_builds_the_real_hardware_stack(monkeypatch):
         assert isinstance(runtime.heater, GpioHeater)
         assert isinstance(runtime.valve, GpioValve)
         assert isinstance(runtime.pump, GpioPump)
+        assert isinstance(runtime.pressure, FakePressure)
 
         # the pins came from configuration, and all start de-energised
         assert set(pins) == {
@@ -79,6 +93,8 @@ def test_rtd_mode_builds_the_real_hardware_stack(monkeypatch):
     # shutdown cuts the element and releases every pin
     assert not any(pin.is_on for pin in pins.values())
     assert all(pin.closed for pin in pins.values())
+    assert isinstance(runtime.pressure, FakePressure)
+    assert runtime.pressure.closed
 
 
 def test_rtd_mode_pours_through_the_pump_and_valve(monkeypatch):
@@ -101,6 +117,7 @@ def test_rtd_mode_pours_through_the_pump_and_valve(monkeypatch):
     )
     monkeypatch.setattr(runtime_module, "open_sensor", lambda **kwargs: FakeSensor())
     monkeypatch.setattr(runtime_module, "open_output_pin", fake_open_pin)
+    monkeypatch.setattr(runtime_module, "open_pressure_sensor", lambda **kwargs: FakePressure())
 
     runtime = runtime_module.Runtime()
     try:
@@ -132,5 +149,31 @@ def test_history_is_untouched_until_something_has_run():
         runtime._record_pour()
 
         assert runtime.history.recent() == []
+    finally:
+        runtime.stop()
+
+
+def test_a_finished_pour_is_logged_with_its_peak_pressure(fake_clock, monkeypatch):
+    runtime = runtime_module.Runtime(clock=fake_clock)
+    try:
+        runtime.pressure_peak.observe(9.4)
+        monkeypatch.setattr(
+            runtime.doser,
+            "status",
+            lambda: PourState(
+                state="done",
+                drink="espresso",
+                target_ml=30.0,
+                delivered_ml=30.0,
+                elapsed_s=27.0,
+                message="Poured 30 ml",
+            ),
+        )
+
+        runtime._record_pour()
+
+        [entry] = runtime.history.recent()
+        assert entry.name == "espresso"
+        assert entry.peak_bar == pytest.approx(9.4)
     finally:
         runtime.stop()

@@ -58,6 +58,24 @@ def test_state_reports_defaults(client):
     assert body["valve_open"] == 0.0
 
 
+def test_state_reports_brew_pressure(client):
+    body = client.get("/state").json()
+
+    assert body["pressure_ok"] is True
+    assert body["pressure_fault"] is None
+    assert isinstance(body["pressure_bar"], float)
+    assert body["pressure_bar"] >= 0.0
+
+
+def test_a_machine_without_a_pressure_sender_says_so(client, runtime):
+    runtime.pressure = None
+
+    body = client.get("/state").json()
+
+    assert body["pressure_ok"] is False
+    assert "No pressure sensor" in body["pressure_fault"]
+
+
 def test_setpoint_updates_state(client):
     response = client.post("/control/setpoint", json={"setpoint_c": 96.5})
 
@@ -113,6 +131,8 @@ def test_telemetry_returns_sampled_points(client):
         "valve_open",
         "setpoint_c",
         "control_enabled",
+        "pressure_bar",
+        "pressure_ok",
     }
 
 

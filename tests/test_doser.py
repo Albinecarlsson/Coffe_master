@@ -117,6 +117,34 @@ def test_a_pour_delivers_the_drinks_volume(fake_clock):
     assert valve.events[-1] == "shut"
 
 
+def test_start_notifies_observers_before_the_first_drop(fake_clock):
+    calls: list[str] = []
+    doser = Doser(
+        FakeValve(),
+        brew_flow_ml_s=300.0,
+        clock=fake_clock,
+        on_start=lambda: calls.append("start"),
+    )
+
+    doser.start(_drink(30.0))
+
+    assert calls == ["start"]
+    assert _wait_until(lambda: doser.status().state == "done")
+
+
+def test_a_failing_on_start_observer_does_not_stop_the_pour(fake_clock):
+    def explode() -> None:
+        raise RuntimeError("observer gone")
+
+    valve = FakeValve()
+    doser = Doser(valve, brew_flow_ml_s=300.0, clock=fake_clock, on_start=explode)
+
+    doser.start(_drink(30.0))
+
+    assert _wait_until(lambda: doser.status().state == "done")
+    assert valve.open == 0.0
+
+
 def test_the_pump_runs_for_the_pour_and_stops_first(fake_clock):
     valve = FakeValve()
     pump = FakePump()

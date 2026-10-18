@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import math
 import random
 import time
 from dataclasses import dataclass
 
 from espresso_mod.hal.base import (
     HeaterActuator,
+    PressureReading,
+    PressureSensor,
     PumpActuator,
     TemperatureSensor,
     TempReading,
@@ -23,8 +26,14 @@ class SimParams:
     sensor_noise_sigma: float = 0.05 # °C
     max_temp_c: float = 140.0
     fixed_dt: float | None = None   # If set, use fixed time step instead of wall-clock time
+    # Pressure model: first-order rise to this pressure while water flows, and
+    # decay to zero when the pump stops or the valve closes.
+    brew_pressure_bar: float = 9.0  # bar with the pump on and the valve open
+    pressure_rise_s: float = 0.35   # time constant building pressure
+    pressure_fall_s: float = 0.18   # time constant bleeding it off
+    pressure_noise_sigma: float = 0.06  # bar
 
-class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator, PumpActuator):
+class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator, PumpActuator, PressureSensor):
     def __init__(self, initial_c: float, params: SimParams):
         self._t_c = initial_c
         self._power = 0.0
@@ -32,6 +41,7 @@ class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator, PumpActuator):
         # The pump starts on: before it was modelled, opening the valve was enough
         # to draw water, and callers that only drive the valve must keep working.
         self._pump_on = True
+        self._pressure_bar = 0.0
         self._params = params
         self._last_ts = time.monotonic()
 
@@ -60,6 +70,15 @@ class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator, PumpActuator):
         self._t_c += dT
         self._t_c = max(p.ambient_c, min(self._t_c, p.max_temp_c))
 
+        # Brew pressure follows the flow, with a first-order lag in each
+        # direction. Pulsing the pump for preinfusion therefore pulses the
+        # pressure, which is what the trace on the dashboard should show.
+        flowing = self._pump_on and self._valve > 0.0
+        target = p.brew_pressure_bar * (self._valve if flowing else 0.0)
+        tau = p.pressure_rise_s if target > self._pressure_bar else p.pressure_fall_s
+        alpha = 1.0 - math.exp(-dt / max(1e-3, tau))
+        self._pressure_bar += (target - self._pressure_bar) * alpha
+
     # TemperatureSensor
     def read(self) -> TempReading:
         self.step()
@@ -86,3 +105,10 @@ class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator, PumpActuator):
 
     def get_on(self) -> bool:
         return self._pump_on
+
+    # PressureSensor
+    def read_pressure(self) -> PressureReading:
+        # No step() here: the temperature read drives the plant clock, and two
+        # readers stepping would advance the model twice as fast.
+        noise = random.gauss(0.0, self._params.pressure_noise_sigma)
+        return PressureReading(bar=max(0.0, self._pressure_bar + noise), ok=True)

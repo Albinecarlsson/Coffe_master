@@ -15,7 +15,7 @@ From the manufacturer's spec sheet and the Brio's own spare-parts list:
 | Pump | Vibration, 12–14 bar rated |
 | Group | Non-E61, ~53 mm portafilter (measure yours) |
 | Controls | **Bimetallic thermostats**, not a pressurestat |
-| Extras | Manometer, built-in grinder |
+| Extras | Manometer (replaced by the pressure sender), built-in grinder |
 
 Two consequences follow from this and they shape everything below.
 
@@ -39,6 +39,10 @@ The spec sheet is a retailer's, so confirm on the actual machine:
       Identify which is the **brew** thermostat and which is the **safety cutout**.
 - [ ] Whether there is a **safety/expansion valve** on the boiler.
 - [ ] Whether a 3-way solenoid valve is fitted, or only a mechanical group valve.
+- [ ] The manometer port: thread (G1/4 or 1/8" BSP), and whether a tee will let the
+      sender and the old gauge share it.
+- [ ] Where to mount the pressure sender: it wants the brew circuit after the pump,
+      not the steam side.
 - [ ] Whether the pump is switched by the brew lever microswitch or by a relay.
 - [ ] Whether a low-water / tank-empty switch exists.
 - [ ] Portafilter diameter and group gasket dimensions.
@@ -140,9 +144,19 @@ This is the step that changes the coffee. Everything after it is convenience.
 
 ### Phase 3 — Sensing
 
-- **Brew pressure**: 0–16 bar transducer on the group circuit, via an ADS1115
-  (I²C, no extra SPI bus contention with the RTD). Gives you real pressure
-  feedback instead of a needle.
+- **Brew pressure** (implemented): a 0–16 bar ratiometric sender (0.5–4.5 V) on
+  the group circuit, through an ADS1115 over I²C — no contention with the RTD's
+  SPI bus. The mechanical manometer is in the way of the screen, so this is not a
+  nice-to-have: the screen becomes the gauge. The sender is halved by a 10k/10k
+  divider because the ADS1115 runs at 3.3 V; wiring and calibration are in the
+  README. The driver is `hal/pressure_ads1115.py`, the maths is
+  `domain/pressure.py`, and peak pressure lands in the shot history.
+  - The reading is **monitoring only** for now. A vibration pump is not dimmable;
+    the useful next step is to stop the preinfusion pulse when the puck reaches a
+    target pressure rather than after a fixed time.
+  - Pick a sender rated ≥16 bar and ≥120 °C with brass or stainless wetted parts.
+    Fit it with the port's real thread (G1/4 or 1/8" BSP — measure), and leak-test
+    with the case open. Keep the old gauge on a tee if you are unsure.
 - **Flow**: a food-grade turbine flow meter inline on the brew path. This is what
   turns "pour for N seconds" into "pour exactly 40 ml".
 - **Weight**: a load cell under the drip tray is the most accurate dosing method
@@ -193,6 +207,11 @@ this after the temperature loop.
 ### Phase 6 — Display, enclosure and UX
 
 - Touchscreen on the Pi, running the kiosk UI served at `/kiosk`.
+- **The pressure gauge goes away** to make room for the screen: the panel is
+  already tight, and the sender from Phase 3 replaces the needle. Route its
+  capillary/port to the sender or cap it properly — do not leave an open fitting.
+  The kiosk's pour card carries the pressure readout, and the dashboard has a live
+  meter and trace.
 - Enclosure considerations: the Pi 4/5 self-heats and a machine enclosure is
   already warm, so plan ventilation or use a Pi Zero 2 W.
 - Mount the screen **away from the group head and steam wand** — heat and
@@ -235,7 +254,9 @@ parts against your model's parts list, not from a generic listing.
 | Grinder motor relay | Phase 5 only | 100–250 |
 | Thermal fuse 145–160 °C | Independent cutout | 50–150 |
 | Fuse holders, fuses, ferrules, glands | Mains safety | 200–400 |
-| 0–16 bar pressure transducer + ADS1115 | Real pressure feedback | 400–800 |
+| 0–16 bar pressure sender, 0.5–4.5 V, ≥120 °C media | Replaces the manometer | 400–800 |
+| ADS1115 breakout + 2 × 10k + 100 nF | Reads the sender on 3.3 V logic | 100–200 |
+| G1/4 or 1/8" BSP fittings / tee + PTFE | Fit the sender without leaking | 100–300 |
 | Turbine flow meter (food grade) | True volumetric dosing | 400–900 |
 | Load cell + HX711 | Gravimetric dosing (best quality) | 200–500 |
 | Tank level switch | Dry-fire protection | 100–250 |
@@ -270,8 +291,8 @@ parts against your model's parts list, not from a generic listing.
 | Drink catalogue and dosing | `domain/drinks.py`, `services/doser.py` |
 | Kiosk UI for drink selection | `ui/kiosk.html` |
 | Pump-pulsed preinfusion | `domain/pulse.py`, `services/pacing.py` |
-| Shot history (SQLite) | `services/history.py` |
-| Pressure sensing | Not implemented — Phase 3 |
+| Shot history (SQLite), including peak pressure | `services/history.py` |
+| Brew pressure sender over I²C (ADS1115, live + per-shot peak) | `hal/pressure_ads1115.py`, `domain/pressure.py` |
 | Flow meter / gravimetric dosing | Not implemented — Phase 3 |
 | Hot-water path | Not implemented — Phase 4 |
 | Grinder control | Not implemented — Phase 5 |
