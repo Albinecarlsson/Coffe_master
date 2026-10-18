@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from espresso_mod.config import settings
 from espresso_mod.domain.clock import Clock
-from espresso_mod.hal.base import HeaterActuator, TemperatureSensor, ValveActuator
+from espresso_mod.hal.base import Closable, HeaterActuator, TemperatureSensor, ValveActuator
+from espresso_mod.hal.gpio import GpioHeater, GpioValve, open_output_pin
+from espresso_mod.hal.rtd_max31865 import open_sensor
 from espresso_mod.hal.sim import SimParams, SimPlant
 from espresso_mod.services.control import ControlLoop
 from espresso_mod.services.shot_runner import ShotRunner
@@ -14,6 +16,9 @@ class Runtime:
         self.sensor: TemperatureSensor
         self.heater: HeaterActuator
         self.valve: ValveActuator
+        # Devices holding an OS handle (SPI, GPIO) that shutdown must release.
+        # Empty in sim mode, where the plant is a plain object.
+        self._devices: list[Closable] = []
 
         if settings.hardware_mode == "sim":
             plant = SimPlant(
@@ -24,14 +29,24 @@ class Runtime:
             self.heater = plant
             self.valve = plant
         elif settings.hardware_mode == "rtd":
-            # The MAX31865 sensor driver itself is implemented (see
-            # hal/rtd_max31865.py), but the actuators are not: only the thermal
-            # simulator provides a heater and valve. Raise before touching SPI so
-            # the message is the same on a dev machine and on a Pi.
-            raise RuntimeError(
-                "HARDWARE_MODE=rtd: the MAX31865 RTD driver is implemented, but the "
-                "GPIO heater and valve actuators are not. Use HARDWARE_MODE=sim."
+            self.sensor = open_sensor(
+                bus=settings.rtd_spi_bus,
+                device=settings.rtd_spi_device,
+                r0=settings.rtd_r0_ohms,
+                rref=settings.rtd_rref_ohms,
+                wires=settings.rtd_wires,
+                filter_hz=settings.rtd_filter_hz,
             )
+            heater = GpioHeater(
+                open_output_pin(settings.heater_gpio_pin, active_high=settings.heater_active_high),
+                window_s=settings.heater_window_s,
+            )
+            valve = GpioValve(
+                open_output_pin(settings.valve_gpio_pin, active_high=settings.valve_active_high)
+            )
+            self.heater = heater
+            self.valve = valve
+            self._devices = [heater, valve]
         else:
             raise ValueError(f"Unknown HARDWARE_MODE={settings.hardware_mode}")
 
@@ -55,7 +70,14 @@ class Runtime:
         self.shots = ShotRunner(control=self.control, valve=self.valve, clock=clock)
 
     def stop(self) -> None:
-        """Stop every background thread this runtime started."""
+        """Stop every background thread this runtime started, then power down.
+
+        The element is cut before the pins are released, so a shutdown can never
+        leave the heater energised.
+        """
         self.shots.cancel()
-        self.telemetry_sampler.stop()
         self.control.stop()
+        self.telemetry_sampler.stop()
+        self.heater.set_power(0.0)
+        for device in self._devices:
+            device.close()

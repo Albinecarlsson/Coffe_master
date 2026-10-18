@@ -21,6 +21,7 @@ dev = [
 # Install on the Raspberry Pi only: pip install -e ".[hardware]"
 hardware = [
   "spidev>=3.6",
+  "gpiozero>=2.0",
 ]
 
 [tool.ruff]
@@ -38,10 +39,11 @@ warn_unused_ignores = true
 warn_return_any = true
 disallow_any_generics = true
 
-# spidev only exists on a Raspberry Pi (installed via the "hardware" extra);
-# the driver imports it lazily so the package stays importable elsewhere.
+# spidev and gpiozero only exist on a Raspberry Pi (installed via the
+# "hardware" extra); the drivers import them lazily so the package stays
+# importable elsewhere.
 [[tool.mypy.overrides]]
-module = ["spidev"]
+module = ["spidev", "gpiozero"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
