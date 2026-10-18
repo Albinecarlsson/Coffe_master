@@ -178,7 +178,7 @@ def test_shot_cannot_start_while_a_drink_is_pouring(monkeypatch):
 
 
 def test_drink_cannot_start_while_a_shot_is_running(monkeypatch):
-    # classic_espresso runs for 28 s on the real clock, so it is still running.
+    # classic_espresso runs for 31 s on the real clock, so it is still running.
     rt = Runtime()
     monkeypatch.setattr(api_module, "_runtime", rt)
     try:
@@ -192,3 +192,53 @@ def test_drink_cannot_start_while_a_shot_is_running(monkeypatch):
         client.post("/shot/cancel")
     finally:
         rt.stop()
+
+
+# ---- history ----
+
+
+def _wait_for_history(client, count=1, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    entries: list[dict] = []
+    while time.monotonic() < deadline:
+        entries = client.get("/history").json()["entries"]
+        if len(entries) >= count:
+            return entries
+        time.sleep(0.01)
+    return entries
+
+
+def test_history_is_empty_until_something_is_poured(client):
+    assert client.get("/history").json() == {"entries": []}
+
+
+def test_a_pour_is_recorded_in_history(hot_client):
+    hot_client.post("/drinks/pour/espresso")
+
+    entries = _wait_for_history(hot_client)
+
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["kind"] == "drink"
+    assert entry["name"] == "espresso"
+    assert entry["state"] == "done"
+    assert entry["delivered_ml"] == pytest.approx(30.0)
+    assert entry["message"] == "Poured 30 ml"
+
+
+def test_a_shot_is_recorded_in_history(client):
+    client.post("/shot/start/classic_espresso")
+
+    entries = _wait_for_history(client)
+
+    assert len(entries) == 1
+    assert entries[0]["kind"] == "shot"
+    assert entries[0]["name"] == "classic_espresso"
+    assert entries[0]["state"] == "done"
+    # a shot has no target volume; it is timed, not dosed
+    assert entries[0]["target_ml"] is None
+
+
+def test_history_limit_is_validated(client):
+    assert client.get("/history", params={"limit": 0}).status_code == 422
+    assert client.get("/history", params={"limit": 500}).status_code == 422

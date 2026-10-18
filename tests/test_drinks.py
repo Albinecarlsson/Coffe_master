@@ -27,3 +27,10 @@ def test_volume_grows_with_the_drink():
     volumes = [DRINKS[key].water_ml for key in ("ristretto", "espresso", "doppio")]
 
     assert volumes == sorted(volumes)
+
+
+def test_every_drink_preinfuses_a_whole_cycle():
+    for drink in DRINKS.values():
+        assert drink.preinfusion is not None, drink.key
+        # at least one on/off cycle has to fit in the preinfusion window
+        assert drink.preinfusion_s >= drink.preinfusion.on_s + drink.preinfusion.off_s

@@ -20,6 +20,9 @@ class State(BaseModel):
     valve_open: float
     setpoint_c: float
     control_enabled: bool
+    # Set when the control loop caught an exception; it cuts the heat and keeps
+    # running, so this is the only sign that something is wrong.
+    control_error: str | None = None
 
 
 class TelemetryQuery(BaseModel):
@@ -75,5 +78,23 @@ class KioskStatus(BaseModel):
     temp_fault: str | None
     setpoint_c: float
     control_enabled: bool
+    control_error: str | None = None
     ready: bool
     pour: PourStatus
+
+
+# ---- History ----
+
+class HistoryEntry(BaseModel):
+    id: int
+    finished_at: float
+    kind: str  # "shot" | "drink"
+    name: str  # profile or drink key
+    state: str  # "done" | "canceled" | "error"
+    target_ml: float | None = None
+    delivered_ml: float | None = None
+    elapsed_s: float
+    message: str | None = None
+
+class HistoryResponse(BaseModel):
+    entries: list[HistoryEntry]

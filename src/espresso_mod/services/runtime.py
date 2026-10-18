@@ -14,6 +14,7 @@ from espresso_mod.hal.rtd_max31865 import open_sensor
 from espresso_mod.hal.sim import SimParams, SimPlant
 from espresso_mod.services.control import ControlLoop
 from espresso_mod.services.doser import Doser
+from espresso_mod.services.history import ShotHistory
 from espresso_mod.services.shot_runner import ShotRunner
 from espresso_mod.services.telemetry import TelemetryBuffer, TelemetrySampler
 
@@ -23,7 +24,8 @@ class Runtime:
         self.sensor: TemperatureSensor
         self.heater: HeaterActuator
         self.valve: ValveActuator
-        # None in sim mode: the plant's valve already stands in for the flow.
+        # In sim mode the plant is the pump too, so preinfusion pulsing shows up
+        # in the telemetry instead of being a no-op.
         self.pump: PumpActuator | None = None
         # Devices holding an OS handle (SPI, GPIO) that shutdown must release.
         # Empty in sim mode, where the plant is a plain object.
@@ -37,6 +39,7 @@ class Runtime:
             self.sensor = plant
             self.heater = plant
             self.valve = plant
+            self.pump = plant
         elif settings.hardware_mode == "rtd":
             self.sensor = open_sensor(
                 bus=settings.rtd_spi_bus,
@@ -60,6 +63,8 @@ class Runtime:
         else:
             raise ValueError(f"Unknown HARDWARE_MODE={settings.hardware_mode}")
 
+        self.history = ShotHistory(settings.history_db_path)
+
         self.control = ControlLoop(self.sensor, self.heater, self.valve, hz=settings.control_loop_hz)
         self.control.start()
 
@@ -77,7 +82,13 @@ class Runtime:
         self.telemetry_sampler.start()
 
         # Shot runner (non-blocking)
-        self.shots = ShotRunner(control=self.control, valve=self.valve, clock=clock)
+        self.shots = ShotRunner(
+            control=self.control,
+            valve=self.valve,
+            clock=clock,
+            pump=self.pump,
+            on_finish=self._record_shot,
+        )
 
         # Drink dosing (non-blocking). Shares the injected clock, so tests can
         # drive a whole pour without waiting for it.
@@ -86,6 +97,35 @@ class Runtime:
             pump=self.pump,
             brew_flow_ml_s=settings.brew_flow_ml_s,
             clock=clock,
+            on_finish=self._record_pour,
+        )
+
+    # ---- history ----
+
+    def _record_shot(self) -> None:
+        state = self.shots.status()
+        if state.profile is None or state.started_ts <= 0:
+            return
+        self.history.record(
+            kind="shot",
+            name=state.profile,
+            state=state.state,
+            elapsed_s=state.total_elapsed_s,
+            message=state.message,
+        )
+
+    def _record_pour(self) -> None:
+        state = self.doser.status()
+        if state.drink is None:
+            return
+        self.history.record(
+            kind="drink",
+            name=state.drink,
+            state=state.state,
+            target_ml=state.target_ml,
+            delivered_ml=state.delivered_ml,
+            elapsed_s=state.elapsed_s,
+            message=state.message,
         )
 
     def stop(self) -> None:

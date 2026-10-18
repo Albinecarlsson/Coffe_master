@@ -10,14 +10,13 @@ from __future__ import annotations
 
 import contextlib
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from espresso_mod.domain.clock import Clock, SystemClock
 from espresso_mod.domain.drinks import Drink
 from espresso_mod.hal.base import PumpActuator, ValveActuator
-
-# How often the run loop wakes to check for a cancel.
-_TICK_S = 0.02
+from espresso_mod.services.pacing import pulse_until, wait_until
 
 
 @dataclass
@@ -27,6 +26,9 @@ class PourState:
     target_ml: float = 0.0
     flow_ml_s: float = 0.0
     started_ts: float = 0.0
+    # When the measured pour began. Zero while preinfusing, so the water pushed
+    # into the puck is not counted as delivered volume.
+    poured_ts: float = 0.0
     message: str | None = None
     # Derived from the clock in `status()`, never stored.
     elapsed_s: float = 0.0
@@ -50,6 +52,7 @@ class Doser:
         pump: PumpActuator | None = None,
         brew_flow_ml_s: float = 1.1,
         clock: Clock | None = None,
+        on_finish: Callable[[], None] | None = None,
     ) -> None:
         if brew_flow_ml_s <= 0.0:
             raise ValueError(f"brew_flow_ml_s must be positive, got {brew_flow_ml_s}")
@@ -58,6 +61,7 @@ class Doser:
         self.pump = pump
         self.brew_flow_ml_s = float(brew_flow_ml_s)
         self._clock: Clock = clock or SystemClock()
+        self._on_finish = on_finish
 
         self._lock = threading.Lock()
         self._state = PourState()
@@ -70,7 +74,11 @@ class Doser:
 
         if state.started_ts > 0:
             state.elapsed_s = max(0.0, self._clock.now() - state.started_ts)
-            state.delivered_ml = min(state.target_ml, state.elapsed_s * state.flow_ml_s)
+        if state.poured_ts > 0:
+            state.delivered_ml = min(
+                state.target_ml,
+                max(0.0, self._clock.now() - state.poured_ts) * state.flow_ml_s,
+            )
         return state
 
     def duration_s(self, drink: Drink) -> float:
@@ -110,18 +118,40 @@ class Doser:
 
     def _run(self, drink: Drink) -> None:
         try:
-            self._open_water()
-            deadline = self._clock.now() + self.duration_s(drink)
-            while self._clock.now() < deadline:
-                if self._is_canceled():
+            # Valve first: the water needs somewhere to go before the pump pushes.
+            self.valve.set_open(1.0)
+
+            if drink.preinfusion is not None and drink.preinfusion_s > 0.0:
+                wet_done = pulse_until(
+                    self.pump,
+                    self._clock,
+                    drink.preinfusion,
+                    self._clock.now() + drink.preinfusion_s,
+                    self._is_canceled,
+                )
+                if not wet_done:
                     self._finish("canceled", "Canceled by user")
                     return
-                self._clock.sleep(_TICK_S)
+
+            with self._lock:
+                self._state.poured_ts = self._clock.now()
+            if self.pump is not None:
+                self.pump.set_on(True)
+
+            deadline = self._clock.now() + self.duration_s(drink)
+            if not wait_until(self._clock, deadline, self._is_canceled):
+                self._finish("canceled", "Canceled by user")
+                return
+
             self._finish("done", f"Poured {drink.water_ml:.0f} ml")
         except Exception as e:  # noqa: BLE001
             self._finish("error", f"{type(e).__name__}: {e}")
         finally:
             self._close_water()
+            # Reporting is an observer, never a reason for a pour to fail.
+            if self._on_finish is not None:
+                with contextlib.suppress(Exception):
+                    self._on_finish()
 
     def _is_canceled(self) -> bool:
         with self._lock:
@@ -131,13 +161,6 @@ class Doser:
         with self._lock:
             self._state.state = state
             self._state.message = message
-
-    def _open_water(self) -> None:
-        # Valve first, then pump: the water needs somewhere to go before the pump
-        # starts pushing, or the machine dead-heads against a shut valve.
-        self.valve.set_open(1.0)
-        if self.pump is not None:
-            self.pump.set_on(True)
 
     def _close_water(self) -> None:
         # Pump first, then valve: stop pushing before shutting the path behind it.

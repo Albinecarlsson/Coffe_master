@@ -41,4 +41,7 @@ class Settings(BaseModel):
     # How close to the setpoint the boiler must be before a pour is allowed.
     ready_tolerance_c: float = float(os.getenv("READY_TOLERANCE_C", "2.0"))
 
+    # Shot history (SQLite). Created lazily on the first pour.
+    history_db_path: str = os.getenv("HISTORY_DB_PATH", "data/history.db")
+
 settings = Settings()

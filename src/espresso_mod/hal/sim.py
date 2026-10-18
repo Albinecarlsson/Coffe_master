@@ -4,25 +4,34 @@ import random
 import time
 from dataclasses import dataclass
 
-from espresso_mod.hal.base import HeaterActuator, TemperatureSensor, TempReading, ValveActuator
+from espresso_mod.hal.base import (
+    HeaterActuator,
+    PumpActuator,
+    TemperatureSensor,
+    TempReading,
+    ValveActuator,
+)
 
 
 @dataclass
 class SimParams:
     ambient_c: float = 22.0
-    # thermal model: dT/dt = heater_gain*power - loss_k*(T-ambient) - flow_k*valve*(T-ambient)
+    # thermal model: dT/dt = heater_gain*power - loss_k*(T-ambient) - flow_k*flow*(T-ambient)
     heater_gain: float = 1.6        # °C/s at power=1 (tune)
     loss_k: float = 0.015           # 1/s
-    flow_k: float = 0.06            # 1/s (extra cooling when valve open)
+    flow_k: float = 0.06            # 1/s (extra cooling when water flows)
     sensor_noise_sigma: float = 0.05 # °C
     max_temp_c: float = 140.0
     fixed_dt: float | None = None   # If set, use fixed time step instead of wall-clock time
 
-class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator):
+class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator, PumpActuator):
     def __init__(self, initial_c: float, params: SimParams):
         self._t_c = initial_c
         self._power = 0.0
         self._valve = 0.0
+        # The pump starts on: before it was modelled, opening the valve was enough
+        # to draw water, and callers that only drive the valve must keep working.
+        self._pump_on = True
         self._params = params
         self._last_ts = time.monotonic()
 
@@ -35,15 +44,17 @@ class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator):
             now = time.monotonic()
             dt = max(0.0, now - self._last_ts)
             self._last_ts = now
-        
+
         if dt <= 0:
             return
 
         p = self._params
+        # Water only moves when the path is open *and* the pump is running.
+        flow = self._valve if self._pump_on else 0.0
         dT = (
             p.heater_gain * self._power
             - p.loss_k * (self._t_c - p.ambient_c)
-            - p.flow_k * self._valve * (self._t_c - p.ambient_c)
+            - p.flow_k * flow * (self._t_c - p.ambient_c)
         ) * dt
 
         self._t_c += dT
@@ -68,3 +79,10 @@ class SimPlant(TemperatureSensor, HeaterActuator, ValveActuator):
 
     def get_open(self) -> float:
         return self._valve
+
+    # PumpActuator
+    def set_on(self, on: bool) -> None:
+        self._pump_on = bool(on)
+
+    def get_on(self) -> bool:
+        return self._pump_on

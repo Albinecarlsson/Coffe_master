@@ -5,6 +5,7 @@ import time
 import pytest
 
 from espresso_mod.domain.drinks import DRINKS, Drink
+from espresso_mod.domain.pulse import Pulse
 from espresso_mod.services.doser import Doser
 
 
@@ -31,16 +32,26 @@ class FakeValve:
 
 
 class FakePump:
-    def __init__(self) -> None:
+    def __init__(self, clock=None) -> None:
         self.events: list[str] = []
+        self.switches: list[tuple[float, bool]] = []
+        self.clock = clock
         self.on = False
 
     def set_on(self, on: bool) -> None:
-        self.on = bool(on)
-        self.events.append("on" if self.on else "off")
+        on = bool(on)
+        if on != self.on:
+            self.events.append("on" if on else "off")
+            if self.clock is not None:
+                self.switches.append((self.clock.now(), on))
+        self.on = on
 
     def get_on(self) -> bool:
         return self.on
+
+    def transitions(self) -> list[tuple[float, bool]]:
+        """Only the changes, so a redundant off-then-off is invisible."""
+        return list(self.switches)
 
 
 def _wait_until(predicate, timeout: float = 2.0) -> bool:
@@ -131,6 +142,74 @@ def test_every_catalogue_drink_pours_its_own_volume(fake_clock):
         assert doser.status().delivered_ml == pytest.approx(drink.water_ml)
 
 
+# ---- preinfusion ----
+
+
+def _preinfused(water_ml: float = 10.0) -> Drink:
+    return Drink(
+        "test",
+        "Test",
+        water_ml,
+        93.0,
+        "A drink for tests",
+        preinfusion=Pulse(on_s=1.0, off_s=1.0),
+        preinfusion_s=2.0,
+    )
+
+
+def test_preinfusion_pulses_the_pump_before_the_measured_pour(fake_clock):
+    pump = FakePump(clock=fake_clock)
+    doser = Doser(FakeValve(), pump=pump, brew_flow_ml_s=2.0, clock=fake_clock)
+    start = fake_clock.now()
+
+    doser.start(_preinfused(10.0))
+    assert _wait_until(lambda: doser.status().state == "done")
+
+    # 1 s on, 1 s off, then the continuous pour, then off at the end
+    assert [(ts - start, on) for ts, on in pump.transitions()] == [
+        (0.0, True),
+        (1.0, False),
+        (2.0, True),
+        (7.0, False),
+    ]
+
+
+def test_the_measured_volume_excludes_the_preinfusion(fake_clock):
+    pump = FakePump(clock=fake_clock)
+    doser = Doser(FakeValve(), pump=pump, brew_flow_ml_s=2.0, clock=fake_clock)
+
+    doser.start(_preinfused(10.0))
+    assert _wait_until(lambda: doser.status().state == "done")
+
+    status = doser.status()
+    # the preinfusion water stays in the puck, so it is not "delivered"
+    assert status.delivered_ml == pytest.approx(10.0)
+    # ...but it does take time: 2 s of wetting plus 5 s of pouring
+    assert status.elapsed_s == pytest.approx(7.0, abs=0.05)
+
+
+def test_cancel_during_preinfusion_leaves_the_pump_off():
+    pump = FakePump()
+    doser = Doser(FakeValve(), pump=pump)
+    drink = Drink(
+        "test",
+        "Test",
+        30.0,
+        93.0,
+        "A drink for tests",
+        preinfusion=Pulse(on_s=0.05, off_s=0.05),
+        preinfusion_s=10.0,
+    )
+    try:
+        doser.start(drink)
+        doser.cancel()
+
+        assert _wait_until(lambda: doser.status().state == "canceled")
+        assert not pump.on
+    finally:
+        doser.stop()
+
+
 # ---- safety ----
 
 
@@ -187,6 +266,21 @@ def test_a_valve_that_also_fails_to_close_never_raises():
     assert _wait_until(lambda: doser.status().state == "error")
     assert not pump.on  # the pump still stopped
     doser.stop()  # and shutdown is not blocked
+
+
+def test_a_failing_on_finish_callback_does_not_break_the_pour(fake_clock):
+    """History is an observer: a full disk must not fail a pour or skip cleanup."""
+    valve = FakeValve()
+
+    def explode() -> None:
+        raise OSError("disk full")
+
+    doser = Doser(valve, clock=fake_clock, on_finish=explode)
+
+    doser.start(_drink(10.0))
+
+    assert _wait_until(lambda: doser.status().state == "done")
+    assert valve.open == 0.0
 
 
 def test_stop_is_safe_when_nothing_is_pouring():

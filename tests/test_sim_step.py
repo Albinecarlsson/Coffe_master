@@ -28,3 +28,28 @@ def test_sim_cools_more_with_valve_open():
 
     assert t_open2 < t_closed2
     assert t_closed2 < t_closed
+
+
+def test_the_pump_gates_the_flow():
+    """No water moves with the valve open and the pump stopped."""
+    off = SimPlant(initial_c=95.0, params=SimParams(ambient_c=22.0, fixed_dt=0.1))
+    off.set_power(0.0)
+    off.set_open(1.0)
+    off.set_on(False)
+    for _ in range(80):
+        off.read()
+
+    on = SimPlant(initial_c=95.0, params=SimParams(ambient_c=22.0, fixed_dt=0.1))
+    on.set_power(0.0)
+    on.set_open(1.0)
+    for _ in range(80):
+        on.read()
+
+    assert off.read().celsius > on.read().celsius
+
+
+def test_the_pump_starts_on():
+    # callers that only drive the valve keep the cooling they always had
+    plant = SimPlant(initial_c=25.0, params=SimParams(fixed_dt=0.1))
+
+    assert plant.get_on() is True

@@ -156,10 +156,11 @@ This is the step that changes the coffee. Everything after it is convenience.
 - Hot-water path for americanos and tea. The Brio has one brew path plus a steam
   wand; hot water needs a second valve wired, so americanos are deferred.
 - Preinfusion: the solenoid is binary and the vibration pump runs at a fixed speed,
-  so the only way to wet the puck gently is to **pulse the pump** (say 1 s on,
-  2 s off, then continuous). That is why the built-in shot profiles are single
-  full-flow pours today. Worth doing here, because it also gives the small boiler
-  a head start on recovery before the main pour.
+  so the only way to wet the puck gently is to **pulse the pump** (1.5 s on, 1.5 s
+  off, then continuous). Implemented in `services/pacing.py` and used by both the
+  shot profiles and the drink pours; the timings still need bench calibration.
+  Worth doing here, because it also gives the small boiler a head start on recovery
+  before the main pour.
 
 The solenoid gets no hidden throttling: any non-zero demand opens it fully, and
 the software no longer pretends otherwise.
@@ -268,6 +269,8 @@ parts against your model's parts list, not from a generic listing.
 | HTTP API + touch UI | `api.py`, `ui/` |
 | Drink catalogue and dosing | `domain/drinks.py`, `services/doser.py` |
 | Kiosk UI for drink selection | `ui/kiosk.html` |
+| Pump-pulsed preinfusion | `domain/pulse.py`, `services/pacing.py` |
+| Shot history (SQLite) | `services/history.py` |
 | Pressure sensing | Not implemented — Phase 3 |
 | Flow meter / gravimetric dosing | Not implemented — Phase 3 |
 | Hot-water path | Not implemented — Phase 4 |

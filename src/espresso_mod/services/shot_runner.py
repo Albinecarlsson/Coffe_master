@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import contextlib
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from espresso_mod.domain.clock import Clock, SystemClock
 from espresso_mod.domain.shot_profiles import SHOT_PROFILES, ShotStep
-from espresso_mod.hal.base import ValveActuator
+from espresso_mod.hal.base import PumpActuator, ValveActuator
 from espresso_mod.services.control import ControlLoop
+from espresso_mod.services.pacing import pulse_until, wait_until
 
 
 @dataclass
@@ -28,7 +31,7 @@ class ShotRunner:
     Runs profiles step-by-step on a background thread.
 
     Safety:
-    - On cancel/error/finish, valve is closed.
+    - On cancel/error/finish, the pump stops and the valve is closed.
     """
 
     def __init__(
@@ -36,10 +39,16 @@ class ShotRunner:
         control: ControlLoop,
         valve: ValveActuator,
         clock: Clock | None = None,
+        *,
+        pump: PumpActuator | None = None,
+        on_finish: Callable[[], None] | None = None,
     ) -> None:
         self.control = control
         self.valve = valve
+        # None means valve-only: the plant or test double models the flow itself.
+        self.pump = pump
         self._clock: Clock = clock or SystemClock()
+        self._on_finish = on_finish
 
         self._lock = threading.Lock()
         self._state = _RunnerState()
@@ -95,28 +104,49 @@ class ShotRunner:
                 if step.setpoint_c is not None:
                     self.control.set_setpoint(step.setpoint_c)
 
-                self.valve.set_open(step.valve_open)
-
-                t0 = self._clock.now()
-                while (self._clock.now() - t0) < step.seconds:
-                    if self._is_canceled():
-                        self._finish("canceled", "Canceled by user")
-                        return
-                    self._clock.sleep(0.02)
+                if not self._run_step(step):
+                    self._finish("canceled", "Canceled by user")
+                    return
 
             self._finish("done", "Profile completed")
         except Exception as e:  # noqa: BLE001
             self._finish("error", f"{type(e).__name__}: {e}")
 
+    def _run_step(self, step: ShotStep) -> bool:
+        """Drive one step. False if the shot was cancelled part-way."""
+        self.valve.set_open(step.valve_open)
+        deadline = self._clock.now() + step.seconds
+
+        if not step.pump_on:
+            self._set_pump(False)
+            return wait_until(self._clock, deadline, self._is_canceled)
+
+        if step.pulse is not None:
+            return pulse_until(self.pump, self._clock, step.pulse, deadline, self._is_canceled)
+
+        self._set_pump(True)
+        return wait_until(self._clock, deadline, self._is_canceled)
+
     def _is_canceled(self) -> bool:
         with self._lock:
             return bool(self._cancel)
 
+    def _set_pump(self, on: bool) -> None:
+        if self.pump is not None:
+            self.pump.set_on(on)
+
     def _finish(self, state: str, msg: str | None) -> None:
-        # always close valve at end
-        try:
+        # Stop pushing first, then close the valve. Neither may raise: this runs
+        # on the error path too, where the actuator is exactly what failed. The
+        # pin is de-energised for real when the device itself is closed.
+        with contextlib.suppress(Exception):
+            self._set_pump(False)
+        with contextlib.suppress(Exception):
             self.valve.set_open(0.0)
-        finally:
-            with self._lock:
-                self._state.state = state
-                self._state.message = msg
+        with self._lock:
+            self._state.state = state
+            self._state.message = msg
+        # Reporting is an observer, never a reason for a shot to fail.
+        if self._on_finish is not None:
+            with contextlib.suppress(Exception):
+                self._on_finish()

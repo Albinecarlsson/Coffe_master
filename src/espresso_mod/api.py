@@ -10,6 +10,7 @@ from espresso_mod.domain.models import (
     ControlEnable,
     DrinkList,
     DrinkOut,
+    HistoryResponse,
     KioskStatus,
     PourStatus,
     Setpoint,
@@ -46,6 +47,7 @@ def state() -> State:
         valve_open=rt.valve.get_open(),
         setpoint_c=rt.control.setpoint_c,
         control_enabled=rt.control.enabled,
+        control_error=rt.control.last_error,
     )
 
 
@@ -160,6 +162,7 @@ def _kiosk_status(rt: Runtime) -> KioskStatus:
         temp_fault=reading.fault,
         setpoint_c=setpoint_c,
         control_enabled=rt.control.enabled,
+        control_error=rt.control.last_error,
         ready=reading.ok and abs(reading.celsius - setpoint_c) <= settings.ready_tolerance_c,
         pour=_pour_status(rt),
     )
@@ -198,8 +201,9 @@ def drink_pour(key: str, force: bool = Query(False)) -> dict[str, Any]:
     if rt.shots.status().state == "running":
         raise HTTPException(409, "A shot is already running")
 
-    # Adopt the drink's temperature even when we refuse to pour, so tapping a
-    # drink starts the boiler heating towards it.
+    # Adopt the drink's temperature and make sure the loop is running, so tapping
+    # a drink starts heating even on a machine that has just booted.
+    rt.control.set_enabled(True)
     rt.control.set_setpoint(drink.setpoint_c)
 
     if not force and not _ready(rt, drink.setpoint_c):
@@ -220,3 +224,12 @@ def drink_pour(key: str, force: bool = Query(False)) -> dict[str, Any]:
 def drink_cancel() -> dict[str, Any]:
     get_runtime().doser.cancel()
     return {"ok": True}
+
+
+# ---- History ----
+
+
+@router.get("/history", response_model=HistoryResponse)
+def history(limit: int = Query(20, ge=1, le=200)) -> HistoryResponse:
+    """Newest first. Empty until something has been poured."""
+    return HistoryResponse(entries=get_runtime().history.recent(limit))

@@ -149,7 +149,7 @@ def test_shot_runs_to_completion_and_closes_valve(client):
 
     assert status["state"] == "done"
     assert status["profile"] == "classic_espresso"
-    assert status["total_elapsed_s"] == pytest.approx(28.0, abs=0.1)
+    assert status["total_elapsed_s"] == pytest.approx(31.0, abs=0.1)
     assert client.get("/state").json()["valve_open"] == 0.0
 
 

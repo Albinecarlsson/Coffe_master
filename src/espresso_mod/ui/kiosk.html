@@ -189,6 +189,30 @@
         font-weight: 800;
         cursor: pointer;
       }
+      .recent { display: grid; gap: 8px; }
+      .recent-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 16px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.03);
+        font-size: 14px;
+      }
+      .recent-row .name { font-weight: 700; }
+      .recent-row .detail { color: var(--muted); font-variant-numeric: tabular-nums; }
+      .recent-row.bad .detail { color: var(--danger); }
+
+      h2.section {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0 0 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+      }
+
       .empty { color: var(--muted); }
     </style>
   </head>
@@ -209,6 +233,11 @@
     <main>
       <div id="drinks" class="drinks"></div>
       <p id="drinksHint" class="empty" style="margin-top: 18px;"></p>
+
+      <section style="margin-top: 32px">
+        <h2 class="section">Recent</h2>
+        <div id="recent" class="recent"></div>
+      </section>
     </main>
 
     <div id="bar" class="bar">
@@ -319,6 +348,36 @@
         refresh();
       }
 
+      async function loadHistory() {
+        let body;
+        try { body = await apiGet("/history?limit=6"); } catch { return; }
+        const wrap = el("recent");
+        wrap.innerHTML = "";
+        if (!body.entries.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "Nothing poured yet.";
+          wrap.appendChild(empty);
+          return;
+        }
+        for (const e of body.entries) {
+          const row = document.createElement("div");
+          row.className = "recent-row" + (e.state === "error" ? " bad" : "");
+          const name = document.createElement("span");
+          name.className = "name";
+          const found = drinks.find((d) => d.key === e.name);
+          name.textContent = found ? found.name : e.name;
+          const detail = document.createElement("span");
+          detail.className = "detail";
+          const amount = e.delivered_ml != null
+            ? `${e.delivered_ml.toFixed(0)} ml`
+            : `${e.elapsed_s.toFixed(0)} s`;
+          detail.textContent = `${amount} • ${e.state}`;
+          row.append(name, detail);
+          wrap.appendChild(row);
+        }
+      }
+
       function renderPour(pour) {
         const bar = el("bar");
         const active = pour.state === "pouring";
@@ -350,7 +409,12 @@
         el("tempC").textContent = status.temp_ok ? status.temp_c.toFixed(1) : "--";
         const pill = el("readyPill");
         pill.className = "pill";
-        if (!status.temp_ok) {
+        pill.title = "";
+        if (status.control_error) {
+          pill.textContent = "Control fault";
+          pill.title = status.control_error;
+          pill.classList.add("bad");
+        } else if (!status.temp_ok) {
           pill.textContent = status.temp_fault ? `Sensor: ${status.temp_fault}` : "Sensor fault";
           pill.classList.add("bad");
         } else if (status.ready) {
@@ -371,8 +435,10 @@
       async function refresh() {
         try {
           const status = await apiGet("/kiosk/status");
+          const wasPouring = lastPour === "pouring";
           renderReady(status);
           renderPour(status.pour);
+          if (wasPouring && status.pour.state !== "pouring") loadHistory();
         } catch (e) {
           el("readyPill").className = "pill bad";
           el("readyPill").textContent = "Offline";
@@ -384,7 +450,9 @@
       (async function main() {
         await loadDrinks().catch((e) => showToast(`Could not load drinks: ${e.message}`));
         await refresh();
+        loadHistory();
         setInterval(refresh, 1000);
+        setInterval(loadHistory, 5000);
       })();
     </script>
   </body>

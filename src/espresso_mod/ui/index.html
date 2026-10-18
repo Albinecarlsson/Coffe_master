@@ -446,14 +446,21 @@ async function loadProfiles() {
 
         // Control pill
         elControlPill.className = "pill";
-        if (s.control_enabled && s.temp_ok) {
+        if (s.control_error) {
+          elControlPill.classList.add("bad");
+          elControlPill.textContent = "Control: FAULT";
+          elControlPill.title = s.control_error;
+        } else if (s.control_enabled && s.temp_ok) {
           elControlPill.classList.add("ok");
           elControlPill.textContent = "Control: ENABLED";
+          elControlPill.title = "";
         } else if (!s.control_enabled) {
           elControlPill.textContent = "Control: DISABLED";
+          elControlPill.title = "";
         } else {
           elControlPill.classList.add("warn");
           elControlPill.textContent = "Control: HOLD (sensor)";
+          elControlPill.title = "";
         }
       }
 

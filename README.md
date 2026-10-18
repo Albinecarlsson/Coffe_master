@@ -38,6 +38,8 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 - ✅ **Thermal Simulation** – realistic boiler physics model for offline development
 - ✅ **MAX31865 RTD Driver** – PT100/PT1000 over SPI, with fault decoding and range checks
 - ✅ **GPIO Actuators** – time-proportioned SSR heater, plus solenoid valve and pump for `HARDWARE_MODE=rtd`
+- ✅ **Pump-Pulsed Preinfusion** – wet the puck in bursts before the measured pour
+- ✅ **Shot History** – every shot and pour appended to SQLite, with the last few on the kiosk
 
 ### Roadmap
 - 🔜 WebSocket push for real-time UI updates (the UI currently polls)
@@ -46,8 +48,6 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 - 🔜 Gravimetric dosing (load cell under the drip tray)
 - 🔜 Hot-water path, so americanos and tea can be poured in one action
 - 🔜 Grinder control (grind by weight)
-- 🔜 Shot history persistence (SQLite)
-- 🔜 Pump-pulsed preinfusion (the solenoid is binary, but the pump relay now exists)
 - 🔜 Advanced pressure profiling (flow control valve)
 
 ---
@@ -108,7 +108,7 @@ curl http://127.0.0.1:8000/telemetry?seconds=30
 # List available profiles
 curl http://127.0.0.1:8000/shot/profiles
 
-# Start a classic espresso shot (28 s: 3 s preinfusion + 25 s extraction)
+# Start a classic espresso shot (31 s: 6 s pulsed preinfusion + 25 s extraction)
 curl -X POST http://127.0.0.1:8000/shot/start/classic_espresso
 
 # Check shot status
@@ -135,6 +135,9 @@ curl -X POST "http://127.0.0.1:8000/drinks/pour/espresso?force=true"
 
 # Stop a pour
 curl -X POST http://127.0.0.1:8000/drinks/cancel
+
+# The last few shots and pours, newest first
+curl "http://127.0.0.1:8000/history?limit=5"
 ```
 
 ---
@@ -147,7 +150,8 @@ Two pages are served from the same API:
 per drink with its water volume and temperature, a live boiler temperature, and a
 readiness pill. Tapping a tile pours that drink and shows a progress bar with
 delivered millilitres; the tiles disable themselves until the boiler is at
-temperature, or the pour can be forced from the toast that appears.
+temperature, or the pour can be forced from the toast that appears. Under the
+tiles, the last few drinks come back from the shot history.
 
 **Engineer dashboard — `http://127.0.0.1:8000/`** shows live temperature, heater
 power and valve state, lets you set the setpoint and toggle the PID loop, runs any
@@ -169,6 +173,7 @@ espresso_mod/
 │   ├── models.py       # Data models (State, TempReading, etc.)
 │   ├── pid.py          # PID controller implementation
 │   ├── clock.py        # Injectable time source (deterministic timing)
+│   ├── pulse.py        # Pump on/off pattern for preinfusion
 │   ├── drinks.py       # Drink catalogue (volumes and temperatures)
 │   └── shot_profiles.py # Shot profile definitions
 ├── hal/                # Hardware Abstraction Layer
@@ -179,6 +184,8 @@ espresso_mod/
 ├── services/           # Orchestration & business logic
 │   ├── control.py      # PID control loop
 │   ├── doser.py        # Volumetric pour control
+│   ├── history.py      # SQLite shot history
+│   ├── pacing.py       # Cancellable waits and pump pulsing
 │   ├── shot_runner.py  # Shot execution state machine
 │   ├── telemetry.py    # Data history tracking
 │   └── runtime.py      # Service container & lifecycle
@@ -237,6 +244,7 @@ Then set `HARDWARE_MODE=rtd` in `.env` and map the hardware to your board:
 | `HEATER_WINDOW_S` | `1.0` | Time-proportioning window for the relay |
 | `BREW_FLOW_ML_S` | `1.1` | Calibrated flow used to convert volume into pump seconds |
 | `READY_TOLERANCE_C` | `2.0` | How close to setpoint the boiler must be before a pour is allowed |
+| `HISTORY_DB_PATH` | `data/history.db` | SQLite file for shot history; created on first use |
 
 ### MAX31865 RTD sensor
 
@@ -264,8 +272,13 @@ fully and `0` closes it. A demand of 0.2 means "some water", not 20% flow. `Gpio
 takes an `open_threshold` if you ever want to suppress small demands, but the default
 is zero — refusing a profile step silently is worse than opening a binary valve.
 
-Because of that, the built-in shot profiles are single full-flow pours. Real
-preinfusion needs the pump pulsed, which the roadmap covers.
+Because of that, the built-in shot profiles get their preinfusion from the pump,
+not the valve: a short burst of full pressure, then a soak with the valve still
+open while the pressure decays into the puck, repeated before the continuous
+pour. `ShotStep.pump_on=False` gives a plain dwell. The timings in
+`domain/shot_profiles.py` are a starting point — they depend on the pump, the
+basket and the grind, so tune them on the bench (Phase 4 in
+[docs/renovation.md](docs/renovation.md)).
 
 ### Pump and dosing
 
@@ -282,6 +295,27 @@ meter is the Phase 3 upgrade in [docs/renovation.md](docs/renovation.md).
 `water_ml` is water delivered *through the group*, not the yield in the cup: the puck
 keeps roughly twice its own weight in water, so a 9 g dose at 30 ml through the group
 yields about 12 ml. Weigh the cup when calibrating.
+
+Every drink also gets a pump-pulsed preinfusion before the measured pour: 1.5 s on,
+1.5 s off, for six seconds. That water stays in the puck, so it is **not** counted
+against `water_ml`; only the continuous pour after it counts. This is the same idea
+as the shot-profile preinfusion above, driven from `Drink.preinfusion`.
+
+### Shot history
+
+Every finished shot and pour is appended to SQLite (`HISTORY_DB_PATH`). The table is
+created on the first pour, so nothing is written until the machine has actually made
+coffee. `GET /history?limit=20` returns the newest first; the kiosk shows the last
+six. A write failure is logged nowhere and deliberately ignored — history is an
+observer, and a full disk must not turn a completed shot into an error.
+
+### Control-loop faults
+
+An exception from the sensor or an actuator no longer kills the control thread. The
+loop cuts the element, records `control_error`, and keeps running, so a transient
+SPI glitch recovers on its own instead of needing a restart. Both UIs show it: the
+dashboard's control pill turns red and the kiosk's readiness pill reads
+"Control fault", with the exception as the hover text.
 
 ---
 

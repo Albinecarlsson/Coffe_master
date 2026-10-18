@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 
 import pytest
 
@@ -92,6 +93,12 @@ def test_rtd_mode_pours_through_the_pump_and_valve(monkeypatch):
     monkeypatch.setattr(settings, "hardware_mode", "rtd")
     monkeypatch.setattr(settings, "heater_window_s", 0.02)
     monkeypatch.setattr(settings, "brew_flow_ml_s", 300.0)
+    # preinfusion is measured in real seconds; skip it so the test stays quick
+    monkeypatch.setitem(
+        DRINKS,
+        "espresso",
+        replace(DRINKS["espresso"], preinfusion=None, preinfusion_s=0.0),
+    )
     monkeypatch.setattr(runtime_module, "open_sensor", lambda **kwargs: FakeSensor())
     monkeypatch.setattr(runtime_module, "open_output_pin", fake_open_pin)
 
@@ -115,3 +122,15 @@ def test_unknown_hardware_mode_is_rejected(monkeypatch):
 
     with pytest.raises(ValueError, match="banana"):
         runtime_module.Runtime()
+
+
+def test_history_is_untouched_until_something_has_run():
+    runtime = runtime_module.Runtime()
+    try:
+        # the callbacks only fire after a pour; before that there is nothing to log
+        runtime._record_shot()
+        runtime._record_pour()
+
+        assert runtime.history.recent() == []
+    finally:
+        runtime.stop()
