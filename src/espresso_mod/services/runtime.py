@@ -3,7 +3,6 @@ from __future__ import annotations
 from espresso_mod.config import settings
 from espresso_mod.domain.clock import Clock
 from espresso_mod.hal.base import HeaterActuator, TemperatureSensor, ValveActuator
-from espresso_mod.hal.rtd_max31865 import Max31865RtdSensor
 from espresso_mod.hal.sim import SimParams, SimPlant
 from espresso_mod.services.control import ControlLoop
 from espresso_mod.services.shot_runner import ShotRunner
@@ -25,8 +24,14 @@ class Runtime:
             self.heater = plant
             self.valve = plant
         elif settings.hardware_mode == "rtd":
-            self.sensor = Max31865RtdSensor()
-            raise RuntimeError("HARDWARE_MODE=rtd not fully wired yet. Use sim for development.")
+            # The MAX31865 sensor driver itself is implemented (see
+            # hal/rtd_max31865.py), but the actuators are not: only the thermal
+            # simulator provides a heater and valve. Raise before touching SPI so
+            # the message is the same on a dev machine and on a Pi.
+            raise RuntimeError(
+                "HARDWARE_MODE=rtd: the MAX31865 RTD driver is implemented, but the "
+                "GPIO heater and valve actuators are not. Use HARDWARE_MODE=sim."
+            )
         else:
             raise ValueError(f"Unknown HARDWARE_MODE={settings.hardware_mode}")
 
