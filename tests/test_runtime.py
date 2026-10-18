@@ -5,8 +5,9 @@ import time
 import pytest
 
 from espresso_mod.config import settings
+from espresso_mod.domain.drinks import DRINKS
 from espresso_mod.hal.base import TempReading
-from espresso_mod.hal.gpio import GpioHeater, GpioValve
+from espresso_mod.hal.gpio import GpioHeater, GpioPump, GpioValve
 from espresso_mod.services import runtime as runtime_module
 
 
@@ -58,9 +59,14 @@ def test_rtd_mode_builds_the_real_hardware_stack(monkeypatch):
         assert isinstance(runtime.sensor, FakeSensor)
         assert isinstance(runtime.heater, GpioHeater)
         assert isinstance(runtime.valve, GpioValve)
+        assert isinstance(runtime.pump, GpioPump)
 
-        # the pins came from configuration, and both start de-energised
-        assert set(pins) == {settings.heater_gpio_pin, settings.valve_gpio_pin}
+        # the pins came from configuration, and all start de-energised
+        assert set(pins) == {
+            settings.heater_gpio_pin,
+            settings.valve_gpio_pin,
+            settings.pump_gpio_pin,
+        }
         assert not any(pin.is_on for pin in pins.values())
 
         # the control loop drives the real heater, which chops the relay
@@ -69,9 +75,39 @@ def test_rtd_mode_builds_the_real_hardware_stack(monkeypatch):
     finally:
         runtime.stop()
 
-    # shutdown cuts the element and releases both pins
+    # shutdown cuts the element and releases every pin
     assert not any(pin.is_on for pin in pins.values())
     assert all(pin.closed for pin in pins.values())
+
+
+def test_rtd_mode_pours_through_the_pump_and_valve(monkeypatch):
+    """A drink drives both real outputs, then leaves them both off."""
+    pins: dict[int, FakePin] = {}
+
+    def fake_open_pin(number: int, *, active_high: bool = True) -> FakePin:
+        device = FakePin()
+        pins[number] = device
+        return device
+
+    monkeypatch.setattr(settings, "hardware_mode", "rtd")
+    monkeypatch.setattr(settings, "heater_window_s", 0.02)
+    monkeypatch.setattr(settings, "brew_flow_ml_s", 300.0)
+    monkeypatch.setattr(runtime_module, "open_sensor", lambda **kwargs: FakeSensor())
+    monkeypatch.setattr(runtime_module, "open_output_pin", fake_open_pin)
+
+    runtime = runtime_module.Runtime()
+    try:
+        runtime.doser.start(DRINKS["espresso"])
+
+        assert _wait_until(
+            lambda: pins[settings.valve_gpio_pin].is_on and pins[settings.pump_gpio_pin].is_on
+        )
+        assert _wait_until(lambda: runtime.doser.status().state == "done")
+    finally:
+        runtime.stop()
+
+    assert not pins[settings.valve_gpio_pin].is_on
+    assert not pins[settings.pump_gpio_pin].is_on
 
 
 def test_unknown_hardware_mode_is_rejected(monkeypatch):

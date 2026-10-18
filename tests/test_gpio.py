@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from espresso_mod.hal.gpio import GpioHeater, GpioValve
+from espresso_mod.hal.gpio import GpioHeater, GpioPump, GpioValve
 
 
 class FakePin:
@@ -241,6 +241,42 @@ def test_valve_close_releases_the_pin():
     valve.set_open(1.0)
 
     valve.close()
+
+    assert not pin.is_on
+    assert pin.closed
+
+
+# ---- pump ----
+
+
+def test_pump_starts_off():
+    pin = FakePin()
+
+    pump = GpioPump(pin)
+
+    assert not pin.is_on
+    assert pump.get_on() is False
+
+
+def test_pump_switches_on_and_off():
+    pin = FakePin()
+    pump = GpioPump(pin)
+
+    pump.set_on(True)
+    assert pin.is_on
+    assert pump.get_on() is True
+
+    pump.set_on(False)
+    assert not pin.is_on
+    assert pump.get_on() is False
+
+
+def test_pump_close_drives_the_pin_low_and_releases_it():
+    pin = FakePin()
+    pump = GpioPump(pin)
+    pump.set_on(True)
+
+    pump.close()
 
     assert not pin.is_on
     assert pin.closed
