@@ -30,12 +30,13 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 - ✅ **Touch UI** – single-page dashboard for live state, shots and telemetry
 - ✅ **Thermal Simulation** – realistic boiler physics model for offline development
 - ✅ **MAX31865 RTD Driver** – PT100/PT1000 over SPI, with fault decoding and range checks
+- ✅ **GPIO Actuators** – time-proportioned SSR heater and solenoid valve for `HARDWARE_MODE=rtd`
 
 ### Roadmap
-- 🔜 GPIO heater and valve actuators, so `HARDWARE_MODE=rtd` works end to end
 - 🔜 WebSocket push for real-time UI updates (the UI currently polls)
 - 🔜 Pressure sensor integration (ADC-based)
 - 🔜 Shot history persistence (SQLite)
+- 🔜 Proportional preinfusion (needs a proportional valve or pump pressure control)
 - 🔜 Advanced pressure profiling (flow control valve)
 
 ---
@@ -132,6 +133,7 @@ espresso_mod/
 ├── hal/                # Hardware Abstraction Layer
 │   ├── base.py         # Abstract interfaces
 │   ├── sim.py          # Thermal simulator (default)
+│   ├── gpio.py         # SSR heater and solenoid valve over GPIO
 │   └── rtd_max31865.py # MAX31865 RTD sensor over SPI (PT100/PT1000)
 ├── services/           # Orchestration & business logic
 │   ├── control.py      # PID control loop
@@ -169,20 +171,14 @@ ruff check .            # Linting
 
 ## 🛠️ Hardware Setup
 
-1. **Temperature Sensor**: MAX31865 RTD amplifier → PT100/PT1000 probe — driver implemented, see below
-2. **SSR Control**: GPIO → Solid State Relay → Heating element — not implemented yet
-3. **Valve Control**: GPIO → Solenoid valve driver — not implemented yet
-4. **Pressure Sensor** (optional): ADS1115 ADC → analog pressure transducer — not implemented yet
-
-### MAX31865 RTD sensor
-
-Enable SPI (`raspi-config` → Interface Options) and install the optional dependency:
+`HARDWARE_MODE=sim` needs no hardware at all. To drive a real machine, enable SPI
+(`raspi-config` → Interface Options) and install the optional dependencies:
 
 ```bash
 pip install -e ".[hardware]"   # Raspberry Pi only
 ```
 
-Then point the driver at your probe via `.env` (see [.env.example](.env.example)):
+Then set `HARDWARE_MODE=rtd` in `.env` and map the hardware to your board:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -191,6 +187,12 @@ Then point the driver at your probe via `.env` (see [.env.example](.env.example)
 | `RTD_WIRES` | `2` | 2, 3 or 4; three-wire probes get lead-resistance compensation |
 | `RTD_FILTER_HZ` | `60` | Mains rejection: 50 (Europe) or 60 (US) |
 | `RTD_SPI_BUS` / `RTD_SPI_DEVICE` | `0` / `0` | SPI bus and chip-select |
+| `HEATER_GPIO_PIN` | `17` | SSR control pin (BCM) |
+| `VALVE_GPIO_PIN` | `27` | Solenoid driver pin (BCM) |
+| `HEATER_ACTIVE_HIGH` / `VALVE_ACTIVE_HIGH` | `true` | Set false for active-low driver boards |
+| `HEATER_WINDOW_S` | `1.0` | Time-proportioning window for the relay |
+
+### MAX31865 RTD sensor
 
 The driver runs the chip in auto-convert mode, so a `read()` is a fast register access
 rather than a ~75 ms blocking wait — worth having when the control loop and the
@@ -198,8 +200,23 @@ telemetry sampler both sample at `CONTROL_LOOP_HZ`. It reports `ok=False` for ch
 faults, for the first conversion after startup, and for resistances outside the RTD's
 standard range (a shorted or disconnected probe).
 
-`HARDWARE_MODE=rtd` still raises at startup, and deliberately so: the sensor is ready,
-but the GPIO heater and valve actuators are not, and only the simulator provides those.
+### SSR heater
+
+A solid state relay is on or off, so the PID's continuous duty cycle is applied by
+holding the element on for `duty × HEATER_WINDOW_S` at the start of each window.
+A one second window is far shorter than a boiler's thermal time constant, and
+switching at around 1 Hz is gentle on the relay.
+
+The element is de-energised on startup and on shutdown, and the applied duty drops to
+zero if the control loop stops sending commands for a second. A loop that stalls or
+dies must not leave the element latched on.
+
+### Solenoid valve
+
+A solenoid has two states, so a fractional demand cannot be honoured: the valve opens
+at or above 0.5 and is closed below it. That means the built-in profiles' 0.2
+preinfusion step leaves it **shut** rather than pretending to throttle a binary
+device — real preinfusion needs a proportional valve or pump pressure control.
 
 ---
 
