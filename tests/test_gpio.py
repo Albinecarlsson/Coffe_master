@@ -212,16 +212,39 @@ def test_valve_opens_on_a_full_demand():
     assert valve.get_open() == 1.0
 
 
-@pytest.mark.parametrize("demand", [0.0, 0.2, 0.49])
-def test_valve_stays_closed_below_the_threshold(demand):
-    """A solenoid cannot be throttled, so a fractional demand leaves it shut."""
+def test_valve_stays_closed_at_zero_demand():
+    pin = FakePin()
+    valve = GpioValve(pin)
+
+    valve.set_open(0.0)
+
+    assert not pin.is_on
+    assert valve.get_open() == 0.0
+
+
+@pytest.mark.parametrize("demand", [0.01, 0.2, 0.49, 1.0])
+def test_any_non_zero_demand_opens_the_valve_fully(demand):
+    """A solenoid cannot be throttled, so any demand means fully open."""
     pin = FakePin()
     valve = GpioValve(pin)
 
     valve.set_open(demand)
 
+    assert pin.is_on
+    assert valve.get_open() == 1.0
+
+
+def test_a_custom_threshold_can_suppress_small_demands():
+    """The threshold is a deadband, for callers that want one."""
+    pin = FakePin()
+    valve = GpioValve(pin, open_threshold=0.5)
+
+    valve.set_open(0.49)
     assert not pin.is_on
-    assert valve.get_open() == 0.0
+
+    valve.set_open(0.51)
+    assert pin.is_on
+    assert valve.get_open() == 1.0
 
 
 def test_valve_closes_again():

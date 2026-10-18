@@ -15,11 +15,11 @@ from typing import Protocol, cast
 from espresso_mod.domain.clock import Clock, SystemClock
 from espresso_mod.hal.base import HeaterActuator, PumpActuator, ValveActuator
 
-# A solenoid has two states, so a fractional demand cannot be honoured: it opens
-# at or above this and stays closed below it. The built-in profiles ask for 0.2
-# during preinfusion, which is therefore treated as closed rather than acting as
-# if a binary device could be throttled.
-_OPEN_THRESHOLD = 0.5
+# A solenoid has two states, so a fractional demand cannot be honoured: any
+# demand above this threshold opens it fully. The threshold is a deadband, not a
+# throttle. It defaults to zero because refusing a 0.2 demand would silently void
+# a profile step; raise it only to suppress demands a caller wants ignored.
+_OPEN_THRESHOLD = 0.0
 
 _PIN_CLOSE_TIMEOUT_S = 1.0
 
@@ -160,8 +160,8 @@ class SwitchedOutput:
 class GpioValve(SwitchedOutput, ValveActuator):
     """Solenoid valve driver.
 
-    The valve opens at or above ``open_threshold`` and is closed below it, so a
-    profile's preinfusion demand of 0.2 leaves it shut. See ``_OPEN_THRESHOLD``.
+    The valve is binary: any demand above ``open_threshold`` opens it fully, so a
+    demand of 0.2 means "some water" rather than 20% flow. See ``_OPEN_THRESHOLD``.
     """
 
     def __init__(self, pin: OutputPin, *, open_threshold: float = _OPEN_THRESHOLD) -> None:
@@ -169,7 +169,7 @@ class GpioValve(SwitchedOutput, ValveActuator):
         self._open_threshold = float(open_threshold)
 
     def set_open(self, open_0_to_1: float) -> None:
-        self._set(float(open_0_to_1) >= self._open_threshold)
+        self._set(float(open_0_to_1) > self._open_threshold)
 
     def get_open(self) -> float:
         return 1.0 if self._on else 0.0

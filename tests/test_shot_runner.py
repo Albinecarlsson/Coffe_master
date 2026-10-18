@@ -36,8 +36,30 @@ def test_shot_runner_completes_profile_and_closes_valve(fake_clock):
     assert state.state == "done"
     assert state.profile == "classic_espresso"
     assert plant.get_open() == 0.0
-    # 3 s preinfusion + 25 s extraction, measured on the virtual clock
+    # a single full-flow pour, measured on the virtual clock
     assert state.total_elapsed_s == pytest.approx(28.0, abs=0.1)
+
+
+def test_shot_runner_walks_every_step_and_applies_its_setpoint(fake_clock, monkeypatch):
+    """Multi-step profiles still work, even though no built-in one uses them yet."""
+    monkeypatch.setitem(
+        SHOT_PROFILES,
+        "test_two_steps",
+        [
+            ShotStep(seconds=2.0, valve_open=1.0, setpoint_c=94.0),
+            ShotStep(seconds=3.0, valve_open=1.0, setpoint_c=92.0),
+        ],
+    )
+    runner, plant = _make_runner(clock=fake_clock)
+
+    runner.start("test_two_steps")
+    state = _wait_for_state(runner, ("done", "error", "canceled"))
+
+    assert state.state == "done"
+    assert state.step_index == 1
+    assert state.total_elapsed_s == pytest.approx(5.0, abs=0.1)
+    assert runner.control.setpoint_c == 92.0
+    assert plant.get_open() == 0.0
 
 
 def test_shot_runner_cancel_closes_valve():
