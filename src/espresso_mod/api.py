@@ -87,22 +87,13 @@ def valve(body: ValveCmd) -> dict[str, Any]:
 
 @router.get("/shot/status", response_model=ShotStatus)
 def shot_status() -> ShotStatus:
-    rt = get_runtime()
-    st = rt.shots.status()
-
-    total_elapsed = 0.0
-    step_elapsed = 0.0
-    if st.state in ("running", "done", "canceled", "error") and st.started_ts > 0:
-        total_elapsed = max(0.0, __import__("time").monotonic() - st.started_ts)
-    if st.state == "running" and st.step_started_ts > 0:
-        step_elapsed = max(0.0, __import__("time").monotonic() - st.step_started_ts)
-
+    st = get_runtime().shots.status()
     return ShotStatus(
         state=st.state,
         profile=st.profile,
         step_index=st.step_index,
-        step_elapsed_s=step_elapsed,
-        total_elapsed_s=total_elapsed,
+        step_elapsed_s=st.step_elapsed_s,
+        total_elapsed_s=st.total_elapsed_s,
         message=st.message,
     )
 

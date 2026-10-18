@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from espresso_mod.config import settings
+from espresso_mod.domain.clock import Clock
 from espresso_mod.hal.base import HeaterActuator, TemperatureSensor, ValveActuator
 from espresso_mod.hal.rtd_max31865 import Max31865RtdSensor
 from espresso_mod.hal.sim import SimParams, SimPlant
@@ -10,7 +11,7 @@ from espresso_mod.services.telemetry import TelemetryBuffer, TelemetrySampler
 
 
 class Runtime:
-    def __init__(self) -> None:
+    def __init__(self, clock: Clock | None = None) -> None:
         self.sensor: TemperatureSensor
         self.heater: HeaterActuator
         self.valve: ValveActuator
@@ -46,4 +47,10 @@ class Runtime:
         self.telemetry_sampler.start()
 
         # Shot runner (non-blocking)
-        self.shots = ShotRunner(control=self.control, valve=self.valve)
+        self.shots = ShotRunner(control=self.control, valve=self.valve, clock=clock)
+
+    def stop(self) -> None:
+        """Stop every background thread this runtime started."""
+        self.shots.cancel()
+        self.telemetry_sampler.stop()
+        self.control.stop()

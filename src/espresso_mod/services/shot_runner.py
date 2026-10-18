@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import threading
-import time
 from dataclasses import dataclass
 
+from espresso_mod.domain.clock import Clock, SystemClock
 from espresso_mod.domain.shot_profiles import SHOT_PROFILES, ShotStep
 from espresso_mod.hal.base import ValveActuator
 from espresso_mod.services.control import ControlLoop
@@ -17,6 +17,9 @@ class _RunnerState:
     step_started_ts: float = 0.0
     started_ts: float = 0.0
     message: str | None = None
+    # Derived from the clock when `status()` is called, never stored.
+    total_elapsed_s: float = 0.0
+    step_elapsed_s: float = 0.0
 
 
 class ShotRunner:
@@ -28,9 +31,15 @@ class ShotRunner:
     - On cancel/error/finish, valve is closed.
     """
 
-    def __init__(self, control: ControlLoop, valve: ValveActuator) -> None:
+    def __init__(
+        self,
+        control: ControlLoop,
+        valve: ValveActuator,
+        clock: Clock | None = None,
+    ) -> None:
         self.control = control
         self.valve = valve
+        self._clock: Clock = clock or SystemClock()
 
         self._lock = threading.Lock()
         self._state = _RunnerState()
@@ -39,7 +48,14 @@ class ShotRunner:
 
     def status(self) -> _RunnerState:
         with self._lock:
-            return _RunnerState(**self._state.__dict__)
+            state = _RunnerState(**self._state.__dict__)
+
+        now = self._clock.now()
+        if state.state in ("running", "done", "canceled", "error") and state.started_ts > 0:
+            state.total_elapsed_s = max(0.0, now - state.started_ts)
+        if state.state == "running" and state.step_started_ts > 0:
+            state.step_elapsed_s = max(0.0, now - state.step_started_ts)
+        return state
 
     def start(self, name: str) -> None:
         profile = SHOT_PROFILES.get(name)
@@ -62,7 +78,7 @@ class ShotRunner:
             self._cancel = True
 
     def _run_profile(self, name: str, profile: list[ShotStep]) -> None:
-        start_ts = time.monotonic()
+        start_ts = self._clock.now()
         try:
             with self._lock:
                 self._state.started_ts = start_ts
@@ -74,19 +90,19 @@ class ShotRunner:
 
                 with self._lock:
                     self._state.step_index = idx
-                    self._state.step_started_ts = time.monotonic()
+                    self._state.step_started_ts = self._clock.now()
 
                 if step.setpoint_c is not None:
                     self.control.set_setpoint(step.setpoint_c)
 
                 self.valve.set_open(step.valve_open)
 
-                t0 = time.monotonic()
-                while (time.monotonic() - t0) < step.seconds:
+                t0 = self._clock.now()
+                while (self._clock.now() - t0) < step.seconds:
                     if self._is_canceled():
                         self._finish("canceled", "Canceled by user")
                         return
-                    time.sleep(0.02)
+                    self._clock.sleep(0.02)
 
             self._finish("done", "Profile completed")
         except Exception as e:  # noqa: BLE001
