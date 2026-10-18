@@ -15,4 +15,4 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: mypy src
-      - run: pytest
+      - run: pytest --cov=espresso_mod --cov-report=term-missing --cov-fail-under=90
