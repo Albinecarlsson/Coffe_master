@@ -146,16 +146,19 @@ curl "http://127.0.0.1:8000/history?limit=5"
 
 Two pages are served from the same API:
 
-**Kiosk — `http://127.0.0.1:8000/kiosk`** is the one for daily use. It shows a tile
-per drink with its water volume and temperature, a live boiler temperature, and a
-readiness pill. Tapping a tile pours that drink and shows a progress bar with
-delivered millilitres; the tiles disable themselves until the boiler is at
-temperature, or the pour can be forced from the toast that appears. Under the
-tiles, the last few drinks come back from the shot history.
+**Kiosk — `http://127.0.0.1:8000/kiosk`** is the one for daily use. It is styled
+like the machine rather than a dashboard: espresso browns, crema accents, a serif
+wordmark and a drawn cup per drink whose fill matches its volume. The header shows
+the time, a temperature ring that fills as the boiler warms, and a readiness pill.
+Tapping a tile opens a full-screen pour card with a cup that fills as the shot
+lands, delivered millilitres, a progress bar and a stop button; the result lingers
+for a moment, then clears itself. Tiles disable until the boiler is at temperature,
+or the pour can be forced from the toast that appears. Under the tiles, the last few
+drinks come back from the shot history as chips.
 
-**Engineer dashboard — `http://127.0.0.1:8000/`** shows live temperature, heater
-power and valve state, lets you set the setpoint and toggle the PID loop, runs any
-shot profile, and plots recent telemetry.
+**Engineer dashboard — `http://127.0.0.1:8000/`** shares the same warm palette and
+shows live temperature, heater power and valve state, lets you set the setpoint and
+toggle the PID loop, runs any shot profile, and plots recent telemetry.
 
 Both poll the REST API; moving to WebSocket push is on the roadmap. For a panel on
 the machine, run Chromium fullscreen pointed at `/kiosk`.

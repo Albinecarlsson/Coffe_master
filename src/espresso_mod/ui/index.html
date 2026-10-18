@@ -6,38 +6,59 @@
     <title>Espresso Mod UI</title>
     <style>
       :root {
-        --bg: #0b0f14;
-        --card: #121a23;
-        --text: #e7eef7;
-        --muted: #9bb0c6;
-        --accent: #4da3ff;
-        --danger: #ff4d4d;
-        --ok: #33d17a;
-        --warn: #ffcc00;
-        --border: rgba(255, 255, 255, 0.08);
-        --shadow: 0 10px 30px rgba(0,0,0,0.35);
-        --radius: 18px;
+        /* Same warm palette as the kiosk, so the two screens feel like one machine. */
+        --bg: #120e0b;
+        --card: #1b1410;
+        --text: #f4ece3;
+        --muted: #bda895;
+        --accent: #e8b071;
+        --danger: #e8695c;
+        --ok: #7cc48c;
+        --warn: #e8b071;
+        --border: rgba(255, 240, 220, 0.09);
+        --shadow: 0 14px 34px rgba(0,0,0,0.42);
+        --radius: 20px;
+        --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, ui-serif, serif;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
+        min-height: 100vh;
         font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-        background: var(--bg);
+        background:
+          radial-gradient(70% 50% at 18% -10%, rgba(232, 176, 113, 0.10), transparent 70%),
+          var(--bg);
         color: var(--text);
       }
       header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
         padding: 16px 18px;
         border-bottom: 1px solid var(--border);
         position: sticky; top: 0;
-        background: rgba(11,15,20,0.92);
+        background: rgba(18,14,11,0.9);
         backdrop-filter: blur(10px);
         z-index: 10;
       }
       header h1 {
         margin: 0;
-        font-size: 18px;
-        letter-spacing: 0.2px;
+        font-family: var(--serif);
+        font-weight: 500;
+        font-size: 20px;
+        letter-spacing: 0.01em;
       }
+      .kiosk-link {
+        flex: none;
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 12px;
+        padding: 7px 12px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+      }
+      .kiosk-link:hover { color: var(--text); border-color: rgba(232,176,113,0.4); }
       header .sub {
         margin-top: 4px;
         color: var(--muted);
@@ -108,7 +129,7 @@
         min-width: 120px;
         touch-action: manipulation;
       }
-      button.primary { background: rgba(77,163,255,0.16); border-color: rgba(77,163,255,0.35); }
+      button.primary { background: rgba(232,176,113,0.16); border-color: rgba(232,176,113,0.35); }
       button.danger { background: rgba(255,77,77,0.14); border-color: rgba(255,77,77,0.35); }
       button:active { transform: scale(0.99); }
       .control-grid {
@@ -150,10 +171,13 @@
 
   <body>
     <header>
-      <h1>Espresso Mod</h1>
-      <div class="sub">
-        Local UI • <span id="apiBase" class="mono"></span>
+      <div>
+        <h1>Espresso Mod</h1>
+        <div class="sub">
+          Local UI • <span id="apiBase" class="mono"></span>
+        </div>
       </div>
+      <a class="kiosk-link" href="/kiosk">Kiosk view →</a>
     </header>
 
     <main>
@@ -297,10 +321,10 @@
         data: {
           labels: [],
           datasets: [
-            { label: "Temp (°C)", data: [], yAxisID: "yTemp", tension: 0.2, pointRadius: 0 },
-            { label: "Setpoint (°C)", data: [], yAxisID: "yTemp", tension: 0.2, pointRadius: 0 },
-            { label: "Heater (0..1)", data: [], yAxisID: "yUnit", tension: 0.2, pointRadius: 0 },
-            { label: "Valve (0..1)", data: [], yAxisID: "yUnit", tension: 0.2, pointRadius: 0 },
+            { label: "Temp (°C)", data: [], yAxisID: "yTemp", tension: 0.2, pointRadius: 0, borderColor: "#e8b071", backgroundColor: "rgba(232,176,113,0.14)", borderWidth: 2 },
+            { label: "Setpoint (°C)", data: [], yAxisID: "yTemp", tension: 0.2, pointRadius: 0, borderColor: "#e8695c", backgroundColor: "rgba(232,105,92,0.12)", borderWidth: 2 },
+            { label: "Heater (0..1)", data: [], yAxisID: "yUnit", tension: 0.2, pointRadius: 0, borderColor: "#7cc48c", backgroundColor: "rgba(124,196,140,0.12)", borderWidth: 2 },
+            { label: "Valve (0..1)", data: [], yAxisID: "yUnit", tension: 0.2, pointRadius: 0, borderColor: "#8fa6d8", backgroundColor: "rgba(143,166,216,0.12)", borderWidth: 2 },
           ],
         },
         options: {
@@ -308,23 +332,23 @@
           maintainAspectRatio: false,
           animation: false,
           plugins: {
-            legend: { labels: { color: "#e7eef7" } },
+            legend: { labels: { color: "#f4ece3" } },
             tooltip: { enabled: true },
           },
           scales: {
-            x: { ticks: { color: "#9bb0c6" }, grid: { color: "rgba(255,255,255,0.06)" } },
+            x: { ticks: { color: "#bda895" }, grid: { color: "rgba(255,240,220,0.06)" } },
             yTemp: {
               position: "left",
-              ticks: { color: "#9bb0c6" },
-              grid: { color: "rgba(255,255,255,0.06)" },
-              title: { display: true, text: "°C", color: "#9bb0c6" },
+              ticks: { color: "#bda895" },
+              grid: { color: "rgba(255,240,220,0.06)" },
+              title: { display: true, text: "°C", color: "#bda895" },
             },
             yUnit: {
               position: "right",
               min: 0, max: 1,
-              ticks: { color: "#9bb0c6" },
+              ticks: { color: "#bda895" },
               grid: { drawOnChartArea: false },
-              title: { display: true, text: "0..1", color: "#9bb0c6" },
+              title: { display: true, text: "0..1", color: "#bda895" },
             },
           },
         },
