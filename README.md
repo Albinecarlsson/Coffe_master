@@ -13,7 +13,7 @@ The Espresso Mod replaces the traditional thermostat and manual controls of an I
 - **Programmable shot profiles** (pressure/flow profiling)
 - **Real-time telemetry and monitoring**
 - **RESTful API** for programmatic control
-- **Touch-friendly web UI** (planned)
+- **Touch-friendly web UI** – single-page dashboard served at `/`
 
 All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, allowing full development using a thermal simulator before touching any actual machine components.
 
@@ -27,10 +27,11 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 - ✅ **Shot Runner** – state machine for automated espresso shot execution
 - ✅ **Telemetry System** – time-series data logging for temperature, power, and valve state
 - ✅ **HTTP API** – control and monitor via RESTful endpoints (FastAPI)
+- ✅ **Touch UI** – single-page dashboard for live state, shots and telemetry
 - ✅ **Thermal Simulation** – realistic boiler physics model for offline development
 
 ### Roadmap
-- 🔜 Touch UI (HTML5 + WebSockets for real-time updates)
+- 🔜 WebSocket push for real-time UI updates (the UI currently polls)
 - 🔜 Pressure sensor integration (ADC-based)
 - 🔜 Shot history persistence (SQLite)
 - 🔜 MAX31865 RTD sensor implementation (PT100/PT1000)
@@ -42,7 +43,7 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 
 ### 1. Clone and Setup
 ```bash
-git clone https://github.com/yourusername/Coffe_master.git
+git clone https://github.com/Albinecarlsson/Coffe_master.git
 cd Coffe_master
 python -m venv .venv
 source .venv/Scripts/activate  # Windows Git Bash
@@ -59,7 +60,11 @@ uvicorn espresso_mod.main:app --reload
 ```
 
 Server starts at `http://127.0.0.1:8000`  
+Touch UI: `http://127.0.0.1:8000/`  
 Interactive API docs: `http://127.0.0.1:8000/docs`
+
+Everything runs against the in-memory thermal simulator, so you can drive the
+whole system from the UI without any hardware attached.
 
 ---
 
@@ -89,8 +94,8 @@ curl http://127.0.0.1:8000/telemetry?seconds=30
 # List available profiles
 curl http://127.0.0.1:8000/shot/profiles
 
-# Start a classic espresso shot (25s extraction)
-curl -X POST http://127.0.0.1:8000/shot/run/classic_espresso
+# Start a classic espresso shot (28 s: 3 s preinfusion + 25 s extraction)
+curl -X POST http://127.0.0.1:8000/shot/start/classic_espresso
 
 # Check shot status
 curl http://127.0.0.1:8000/shot/status
@@ -98,6 +103,16 @@ curl http://127.0.0.1:8000/shot/status
 # Cancel running shot
 curl -X POST http://127.0.0.1:8000/shot/cancel
 ```
+
+---
+
+## 🖥️ Touch UI
+
+Open `http://127.0.0.1:8000/` for the single-page dashboard. It shows live
+temperature, heater power and valve state, lets you set the setpoint and toggle
+the PID loop, runs any shot profile, and plots recent telemetry.
+
+It polls the REST API every second; moving to WebSocket push is on the roadmap.
 
 ---
 
@@ -111,6 +126,7 @@ espresso_mod/
 ├── domain/             # Pure business logic (no I/O)
 │   ├── models.py       # Data models (State, TempReading, etc.)
 │   ├── pid.py          # PID controller implementation
+│   ├── clock.py        # Injectable time source (deterministic timing)
 │   └── shot_profiles.py # Shot profile definitions
 ├── hal/                # Hardware Abstraction Layer
 │   ├── base.py         # Abstract interfaces
@@ -122,7 +138,7 @@ espresso_mod/
 │   ├── telemetry.py    # Data history tracking
 │   └── runtime.py      # Service container & lifecycle
 └── ui/
-    └── index.html      # Web UI (under development)
+    └── index.html      # Single-page touch UI (polls the API)
 ```
 
 ### Design Principles
@@ -137,10 +153,9 @@ espresso_mod/
 
 ### Run Tests
 ```bash
-pytest                  # Run all tests
-pytest -v               # Verbose output
-mypy src/               # Type checking
-ruff check src/         # Linting
+pytest --cov=espresso_mod --cov-report=term-missing   # Tests + coverage (CI gate: 90%)
+mypy src/               # Type checking (strict)
+ruff check .            # Linting
 ```
 
 ### Code Guidelines
