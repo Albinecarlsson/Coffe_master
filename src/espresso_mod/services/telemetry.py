@@ -71,23 +71,23 @@ class TelemetrySampler:
         self.hz = max(1, hz)
 
         self._thread: threading.Thread | None = None
-        self._stop = False
+        self._stop = threading.Event()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
-        self._stop = False
+        self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
-        self._stop = True
+        self._stop.set()
         if self._thread:
             self._thread.join(timeout=1.0)
 
     def _run(self) -> None:
         period = 1.0 / self.hz
-        while not self._stop:
+        while not self._stop.is_set():
             ts = time.monotonic()
             reading = self.sensor.read()
 
@@ -101,4 +101,4 @@ class TelemetrySampler:
                 control_enabled=bool(self.get_control_enabled()),
             )
             self.buffer.append(sample)
-            time.sleep(period)
+            self._stop.wait(period)

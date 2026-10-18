@@ -28,24 +28,24 @@ class ControlLoop:
 
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
-        self._stop = False
+        self._stop = threading.Event()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
-        self._stop = False
+        self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
-        self._stop = True
+        self._stop.set()
         if self._thread:
             self._thread.join(timeout=1.0)
 
     def _run(self) -> None:
         period = 1.0 / max(1, self.hz)
         last = time.monotonic()
-        while not self._stop:
+        while not self._stop.is_set():
             now = time.monotonic()
             dt = max(0.0, now - last)
             last = now
@@ -64,7 +64,7 @@ class ControlLoop:
             else:
                 self.heater.set_power(0.0)
 
-            time.sleep(period)
+            self._stop.wait(period)
 
     def set_enabled(self, enabled: bool) -> None:
         with self._lock:
