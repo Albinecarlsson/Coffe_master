@@ -46,6 +46,29 @@ The spec sheet is a retailer's, so confirm on the actual machine:
 
 Photograph the wiring before disconnecting anything.
 
+### Identifying the thermostats
+
+You do not need to know the model number — you need to know which disc does what.
+With the machine unplugged, removed from its casing and the boiler cold:
+
+1. **Count them.** There are usually two or three, each a round disc bolted or
+   clamped to the boiler with two spade terminals.
+2. **Read the stamp.** The temperature rating is stamped or printed on the disc.
+3. **Sort by rating.** Brew is the lowest (typically 90–100 °C). Steam, if fitted,
+   is around 125–135 °C. The safety cutout is the highest (135–160 °C) and very
+   often has a small manual reset button in the middle.
+4. **Trace the wires.** Brew and steam thermostats switch the element for their
+   mode. The safety cutout sits in series with the element and switches nothing
+   else, so it only ever opens on a fault.
+5. **Check it cold.** With the machine unplugged, a multimeter across a healthy
+   thermostat reads near 0 Ω.
+
+A 135 °C disc on a 0.2 L boiler may well be the **steam** thermostat rather than
+the safety cutout, so do not assume the highest-rated one is the safety device —
+confirm with the parts diagram for your model. Whichever disc is the safety cutout
+is the one that must stay in series with your SSR, and the one whose wiring you
+must not disturb.
+
 ---
 
 ## 2. Safety — read this first
@@ -132,16 +155,39 @@ This is the step that changes the coffee. Everything after it is convenience.
 - A drink catalogue with one-touch selection — `src/espresso_mod/domain/drinks.py`.
 - Hot-water path for americanos and tea. The Brio has one brew path plus a steam
   wand; hot water needs a second valve wired, so americanos are deferred.
-- Preinfusion: short low-pressure wetting before full flow. Especially useful
-  here, because it lets the small boiler start recovering before the main pour.
+- Preinfusion: the solenoid is binary and the vibration pump runs at a fixed speed,
+  so the only way to wet the puck gently is to **pulse the pump** (say 1 s on,
+  2 s off, then continuous). That is why the built-in shot profiles are single
+  full-flow pours today. Worth doing here, because it also gives the small boiler
+  a head start on recovery before the main pour.
+
+The solenoid gets no hidden throttling: any non-zero demand opens it fully, and
+the software no longer pretends otherwise.
 
 ### Phase 5 — Grinder integration
 
-- Switch the grinder motor via a relay.
-- **Grind by weight** (load cell) rather than by time — dose repeatability is the
-  biggest single variable in espresso, larger than temperature.
-- Or leave the grinder manual and keep the display as a recipe/timer aid. This is
-  a legitimate choice; do not automate it just because you can.
+The Brio's grinder is built into the chassis, so this is not a separate appliance to
+wire up — it is a second motor inside the machine you already have open. That makes
+it easier mechanically and *harder* to get right, because you are adding a second
+mains load to the same enclosure.
+
+- **Find out how the motor is switched.** Most built-in grinders use a momentary
+  push-button or the doser lever, often switching the live side. Note whether there
+  is a run capacitor: a single-phase induction motor is not a simple resistive load.
+- **Switch it with a proper relay**, rated for an inductive motor load, and fit a
+  snubber. Do not rely on a cheap SSR rated only for resistive heaters.
+- **Never automate the motor without a hopper-empty check** — running a burr grinder
+  dry is noisy and wears the burrs.
+- **Decide the dose control.** Grind-by-time is trivial (run the motor for *N*
+  seconds) but drifts as the beans age and the burrs wear. Grind-by-weight needs a
+  load cell under the portafilter fork or the dosing cup, and is far more repeatable.
+  Weight is the upgrade that actually improves the coffee.
+- Keep the manual button working. A grinder you cannot operate when the Pi is down
+  is a grinder you will resent.
+
+Dose repeatability is the largest single variable in espresso on this class of
+machine — larger than temperature. If you only automate one more thing, automate
+this after the temperature loop.
 
 ### Phase 6 — Display, enclosure and UX
 

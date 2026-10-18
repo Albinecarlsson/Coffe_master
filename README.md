@@ -47,7 +47,7 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 - 🔜 Hot-water path, so americanos and tea can be poured in one action
 - 🔜 Grinder control (grind by weight)
 - 🔜 Shot history persistence (SQLite)
-- 🔜 Proportional preinfusion (needs a proportional valve or pump pressure control)
+- 🔜 Pump-pulsed preinfusion (the solenoid is binary, but the pump relay now exists)
 - 🔜 Advanced pressure profiling (flow control valve)
 
 ---
@@ -259,10 +259,13 @@ dies must not leave the element latched on.
 
 ### Solenoid valve
 
-A solenoid has two states, so a fractional demand cannot be honoured: the valve opens
-at or above 0.5 and is closed below it. That means the built-in profiles' 0.2
-preinfusion step leaves it **shut** rather than pretending to throttle a binary
-device — real preinfusion needs a proportional valve or pump pressure control.
+A solenoid has two states, so it cannot be throttled: **any** non-zero demand opens it
+fully and `0` closes it. A demand of 0.2 means "some water", not 20% flow. `GpioValve`
+takes an `open_threshold` if you ever want to suppress small demands, but the default
+is zero — refusing a profile step silently is worse than opening a binary valve.
+
+Because of that, the built-in shot profiles are single full-flow pours. Real
+preinfusion needs the pump pulsed, which the roadmap covers.
 
 ### Pump and dosing
 
