@@ -29,12 +29,13 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 - ✅ **HTTP API** – control and monitor via RESTful endpoints (FastAPI)
 - ✅ **Touch UI** – single-page dashboard for live state, shots and telemetry
 - ✅ **Thermal Simulation** – realistic boiler physics model for offline development
+- ✅ **MAX31865 RTD Driver** – PT100/PT1000 over SPI, with fault decoding and range checks
 
 ### Roadmap
+- 🔜 GPIO heater and valve actuators, so `HARDWARE_MODE=rtd` works end to end
 - 🔜 WebSocket push for real-time UI updates (the UI currently polls)
 - 🔜 Pressure sensor integration (ADC-based)
 - 🔜 Shot history persistence (SQLite)
-- 🔜 MAX31865 RTD sensor implementation (PT100/PT1000)
 - 🔜 Advanced pressure profiling (flow control valve)
 
 ---
@@ -131,7 +132,7 @@ espresso_mod/
 ├── hal/                # Hardware Abstraction Layer
 │   ├── base.py         # Abstract interfaces
 │   ├── sim.py          # Thermal simulator (default)
-│   └── rtd_max31865.py # Real MAX31865 RTD sensor (future)
+│   └── rtd_max31865.py # MAX31865 RTD sensor over SPI (PT100/PT1000)
 ├── services/           # Orchestration & business logic
 │   ├── control.py      # PID control loop
 │   ├── shot_runner.py  # Shot execution state machine
@@ -166,16 +167,39 @@ ruff check .            # Linting
 
 ---
 
-## 🛠️ Hardware Setup (Future)
+## 🛠️ Hardware Setup
 
-When ready to connect real hardware:
+1. **Temperature Sensor**: MAX31865 RTD amplifier → PT100/PT1000 probe — driver implemented, see below
+2. **SSR Control**: GPIO → Solid State Relay → Heating element — not implemented yet
+3. **Valve Control**: GPIO → Solenoid valve driver — not implemented yet
+4. **Pressure Sensor** (optional): ADS1115 ADC → analog pressure transducer — not implemented yet
 
-1. **Temperature Sensor**: MAX31865 RTD amplifier → PT100/PT1000 probe
-2. **SSR Control**: GPIO → Solid State Relay → Heating element
-3. **Valve Control**: GPIO → Solenoid valve driver
-4. **Pressure Sensor** (optional): ADS1115 ADC → analog pressure transducer
+### MAX31865 RTD sensor
 
-Swap `espresso_mod.hal.sim` for real implementations in [config.py](src/espresso_mod/config.py).
+Enable SPI (`raspi-config` → Interface Options) and install the optional dependency:
+
+```bash
+pip install -e ".[hardware]"   # Raspberry Pi only
+```
+
+Then point the driver at your probe via `.env` (see [.env.example](.env.example)):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RTD_R0_OHMS` | `100.0` | Probe nominal resistance: 100 for PT100, 1000 for PT1000 |
+| `RTD_RREF_OHMS` | `430.0` | Reference resistor on the breakout (4300 for the PT1000 board) |
+| `RTD_WIRES` | `2` | 2, 3 or 4; three-wire probes get lead-resistance compensation |
+| `RTD_FILTER_HZ` | `60` | Mains rejection: 50 (Europe) or 60 (US) |
+| `RTD_SPI_BUS` / `RTD_SPI_DEVICE` | `0` / `0` | SPI bus and chip-select |
+
+The driver runs the chip in auto-convert mode, so a `read()` is a fast register access
+rather than a ~75 ms blocking wait — worth having when the control loop and the
+telemetry sampler both sample at `CONTROL_LOOP_HZ`. It reports `ok=False` for chip
+faults, for the first conversion after startup, and for resistances outside the RTD's
+standard range (a shorted or disconnected probe).
+
+`HARDWARE_MODE=rtd` still raises at startup, and deliberately so: the sensor is ready,
+but the GPIO heater and valve actuators are not, and only the simulator provides those.
 
 ---
 
