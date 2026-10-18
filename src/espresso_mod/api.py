@@ -4,8 +4,14 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
+from espresso_mod.config import settings
+from espresso_mod.domain.drinks import DRINKS
 from espresso_mod.domain.models import (
     ControlEnable,
+    DrinkList,
+    DrinkOut,
+    KioskStatus,
+    PourStatus,
     Setpoint,
     ShotStatus,
     State,
@@ -103,6 +109,8 @@ def shot_start(name: str) -> dict[str, Any]:
     rt = get_runtime()
     if name not in SHOT_PROFILES:
         raise HTTPException(404, f"Unknown profile '{name}'. Known: {list(SHOT_PROFILES.keys())}")
+    if rt.doser.status().state == "pouring":
+        raise HTTPException(409, "A drink is being poured")
     try:
         rt.shots.start(name)
     except RuntimeError as e:
@@ -120,3 +128,95 @@ def shot_cancel() -> dict[str, Any]:
 @router.get("/shot/profiles")
 def shot_profiles() -> dict[str, Any]:
     return {"profiles": list(SHOT_PROFILES.keys())}
+
+
+# ---- Drinks & dosing ----
+
+
+def _pour_status(rt: Runtime) -> PourStatus:
+    st = rt.doser.status()
+    return PourStatus(
+        state=st.state,
+        drink=st.drink,
+        target_ml=st.target_ml,
+        delivered_ml=st.delivered_ml,
+        elapsed_s=st.elapsed_s,
+        message=st.message,
+    )
+
+
+def _ready(rt: Runtime, target_c: float) -> bool:
+    """True when the boiler is at ``target_c`` and the sensor is healthy."""
+    reading = rt.sensor.read()
+    return reading.ok and abs(reading.celsius - target_c) <= settings.ready_tolerance_c
+
+
+def _kiosk_status(rt: Runtime) -> KioskStatus:
+    reading = rt.sensor.read()
+    setpoint_c = rt.control.setpoint_c
+    return KioskStatus(
+        temp_c=reading.celsius,
+        temp_ok=reading.ok,
+        temp_fault=reading.fault,
+        setpoint_c=setpoint_c,
+        control_enabled=rt.control.enabled,
+        ready=reading.ok and abs(reading.celsius - setpoint_c) <= settings.ready_tolerance_c,
+        pour=_pour_status(rt),
+    )
+
+
+@router.get("/drinks", response_model=DrinkList)
+def drinks() -> DrinkList:
+    rt = get_runtime()
+    return DrinkList(
+        drinks=[
+            DrinkOut(
+                key=d.key,
+                name=d.name,
+                description=d.description,
+                water_ml=d.water_ml,
+                setpoint_c=d.setpoint_c,
+            )
+            for d in DRINKS.values()
+        ],
+        brew_flow_ml_s=rt.doser.brew_flow_ml_s,
+    )
+
+
+@router.get("/kiosk/status", response_model=KioskStatus)
+def kiosk_status() -> KioskStatus:
+    return _kiosk_status(get_runtime())
+
+
+@router.post("/drinks/pour/{key}")
+def drink_pour(key: str, force: bool = Query(False)) -> dict[str, Any]:
+    rt = get_runtime()
+    drink = DRINKS.get(key)
+    if drink is None:
+        raise HTTPException(404, f"Unknown drink '{key}'. Known: {list(DRINKS)}")
+
+    if rt.shots.status().state == "running":
+        raise HTTPException(409, "A shot is already running")
+
+    # Adopt the drink's temperature even when we refuse to pour, so tapping a
+    # drink starts the boiler heating towards it.
+    rt.control.set_setpoint(drink.setpoint_c)
+
+    if not force and not _ready(rt, drink.setpoint_c):
+        raise HTTPException(
+            409,
+            f"Boiler is not at {drink.setpoint_c:.0f} °C yet. "
+            "Pass force=true to pour anyway.",
+        )
+
+    try:
+        rt.doser.start(drink)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from e
+    return {"ok": True, "pouring": drink.key, "target_ml": drink.water_ml}
+
+
+@router.post("/drinks/cancel")
+def drink_cancel() -> dict[str, Any]:
+    get_runtime().doser.cancel()
+    return {"ok": True}

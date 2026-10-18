@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <title>Espresso Mod Kiosk</title>
+    <style>
+      :root {
+        --bg: #0b0f14;
+        --card: #121a23;
+        --text: #e7eef7;
+        --muted: #9bb0c6;
+        --accent: #4da3ff;
+        --danger: #ff4d4d;
+        --ok: #33d17a;
+        --warn: #ffcc00;
+        --border: rgba(255, 255, 255, 0.08);
+        --shadow: 0 10px 30px rgba(0,0,0,0.35);
+        --radius: 18px;
+      }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        touch-action: manipulation;
+        user-select: none;
+      }
+
+      header {
+        padding: 18px 22px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        position: sticky; top: 0;
+        background: rgba(11,15,20,0.94);
+        backdrop-filter: blur(10px);
+        z-index: 2;
+      }
+      header h1 { margin: 0; font-size: 22px; letter-spacing: 0.2px; }
+      header .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+      .pills { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+      .pill {
+        display: inline-block;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(0,0,0,0.25);
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .pill.ok   { color: var(--ok);   border-color: rgba(51,209,122,0.4); }
+      .pill.warn { color: var(--warn); border-color: rgba(255,204,0,0.4); }
+      .pill.bad  { color: var(--danger); border-color: rgba(255,77,77,0.4); }
+
+      .temp { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .temp .unit { font-size: 16px; color: var(--muted); font-weight: 600; }
+
+      main { padding: 22px; padding-bottom: 130px; }
+
+      .drinks {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 16px;
+      }
+
+      .drink {
+        appearance: none;
+        text-align: left;
+        cursor: pointer;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--text);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 22px 20px;
+        min-height: 150px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 12px;
+        transition: transform 0.06s ease, border-color 0.15s ease, opacity 0.15s ease;
+      }
+      .drink:active { transform: scale(0.985); border-color: var(--accent); }
+      .drink[disabled] { opacity: 0.42; cursor: not-allowed; }
+      .drink .name { font-size: 22px; font-weight: 700; }
+      .drink .desc { font-size: 13px; color: var(--muted); line-height: 1.35; }
+      .drink .ml {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--accent);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .bar {
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        padding: 18px 22px 22px;
+        background: rgba(11,15,20,0.96);
+        border-top: 1px solid var(--border);
+        backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        transform: translateY(110%);
+        transition: transform 0.18s ease;
+        z-index: 3;
+      }
+      .bar.show { transform: translateY(0); }
+
+      .bar .info { flex: 1; min-width: 0; }
+      .bar .title { font-size: 20px; font-weight: 700; }
+      .bar .detail {
+        font-size: 14px;
+        color: var(--muted);
+        margin-top: 4px;
+        font-variant-numeric: tabular-nums;
+      }
+      .progress {
+        margin-top: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.09);
+        overflow: hidden;
+      }
+      .progress > div {
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+        border-radius: 999px;
+        transition: width 0.2s linear;
+      }
+
+      button.action {
+        appearance: none;
+        cursor: pointer;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.06);
+        color: var(--text);
+        border-radius: 14px;
+        padding: 16px 22px;
+        font-size: 17px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      button.action:active { transform: scale(0.98); }
+      button.action.primary { background: var(--accent); border-color: var(--accent); color: #06121f; }
+      button.action.danger  { background: var(--danger); border-color: var(--danger); color: #1b0505; }
+
+      .link {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 13px;
+        border-bottom: 1px solid transparent;
+      }
+      .link:hover { border-bottom-color: var(--muted); }
+
+      .toast {
+        position: fixed;
+        left: 50%; top: 22px;
+        transform: translate(-50%, -160%);
+        background: var(--danger);
+        color: #1b0505;
+        font-weight: 700;
+        padding: 14px 20px;
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        transition: transform 0.2s ease;
+        z-index: 5;
+        max-width: 90vw;
+        text-align: center;
+      }
+      .toast.show { transform: translate(-50%, 0); }
+      .toast .retry {
+        margin-left: 12px;
+        padding: 8px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(0,0,0,0.35);
+        background: rgba(0,0,0,0.18);
+        color: #1b0505;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .empty { color: var(--muted); }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div>
+        <h1>Choose your coffee</h1>
+        <div class="sub">Isomac Brio • <span id="apiBase"></span></div>
+      </div>
+      <div class="pills">
+        <span id="tempPill" class="temp"><span id="tempC">--</span><span class="unit"> °C</span></span>
+        <span id="readyPill" class="pill">--</span>
+        <a class="link" href="/">Engineer view</a>
+      </div>
+    </header>
+
+    <main>
+      <div id="drinks" class="drinks"></div>
+      <p id="drinksHint" class="empty" style="margin-top: 18px;"></p>
+    </main>
+
+    <div id="bar" class="bar">
+      <div class="info">
+        <div class="title" id="barTitle">--</div>
+        <div class="detail" id="barDetail">--</div>
+        <div class="progress"><div id="barProgress"></div></div>
+      </div>
+      <button id="btnCancel" class="action danger">Stop</button>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+      const API_BASE = window.location.origin;
+      document.getElementById("apiBase").textContent = API_BASE;
+
+      const el = (id) => document.getElementById(id);
+      let drinks = [];
+      let lastPour = null;
+      let busy = false;
+
+      async function apiGet(path) {
+        const r = await fetch(`${API_BASE}${path}`);
+        if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+        return r.json();
+      }
+
+      async function apiPost(path) {
+        const r = await fetch(`${API_BASE}${path}`, { method: "POST" });
+        const text = await r.text();
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch { body = { detail: text }; }
+        if (!r.ok) {
+          const err = new Error((body && body.detail) || `${r.status}`);
+          err.status = r.status;
+          throw err;
+        }
+        return body;
+      }
+
+      function showToast(message, retry) {
+        const t = el("toast");
+        t.textContent = message;
+        if (retry) {
+          const b = document.createElement("button");
+          b.className = "retry";
+          b.textContent = "Pour anyway";
+          b.onclick = () => { hideToast(); retry(); };
+          t.appendChild(b);
+        }
+        t.classList.add("show");
+        clearTimeout(showToast._timer);
+        if (!retry) showToast._timer = setTimeout(hideToast, 4000);
+      }
+      function hideToast() { el("toast").classList.remove("show"); }
+
+      async function loadDrinks() {
+        const body = await apiGet("/drinks");
+        drinks = body.drinks;
+        const wrap = el("drinks");
+        wrap.innerHTML = "";
+        if (!drinks.length) {
+          el("drinksHint").textContent = "No drinks configured.";
+          return;
+        }
+        el("drinksHint").textContent =
+          `Dosing is time based at ${body.brew_flow_ml_s.toFixed(2)} ml/s. ` +
+          "Calibrate BREW_FLOW_ML_S against a scale for accurate volumes.";
+        for (const d of drinks) {
+          const b = document.createElement("button");
+          b.className = "drink";
+          b.dataset.key = d.key;
+          b.innerHTML = `
+            <div>
+              <div class="name"></div>
+              <div class="desc"></div>
+            </div>
+            <div class="ml"></div>`;
+          b.querySelector(".name").textContent = d.name;
+          b.querySelector(".desc").textContent = d.description;
+          b.querySelector(".ml").textContent = `${d.water_ml.toFixed(0)} ml • ${d.setpoint_c.toFixed(0)} °C`;
+          b.onclick = () => pour(d.key, false);
+          wrap.appendChild(b);
+        }
+      }
+
+      async function pour(key, force) {
+        if (busy) return;
+        busy = true;
+        try {
+          await apiPost(`/drinks/pour/${encodeURIComponent(key)}${force ? "?force=true" : ""}`);
+          hideToast();
+        } catch (e) {
+          if (e.status === 409 && !force && /not at/i.test(e.message)) {
+            showToast(e.message, () => pour(key, true));
+          } else {
+            showToast(e.message);
+          }
+        } finally {
+          busy = false;
+          refresh();
+        }
+      }
+
+      async function cancel() {
+        try { await apiPost("/drinks/cancel"); } catch (e) { showToast(e.message); }
+        refresh();
+      }
+
+      function renderPour(pour) {
+        const bar = el("bar");
+        const active = pour.state === "pouring";
+        if (pour.state === "idle") {
+          bar.classList.remove("show");
+          lastPour = pour.state;
+          return;
+        }
+        bar.classList.add("show");
+        const drink = drinks.find((d) => d.key === pour.drink);
+        el("barTitle").textContent = drink ? drink.name : (pour.drink || "Pour");
+        const pct = pour.target_ml > 0
+          ? Math.max(0, Math.min(1, pour.delivered_ml / pour.target_ml))
+          : 0;
+        el("barProgress").style.width = `${(pct * 100).toFixed(1)}%`;
+        if (active) {
+          el("barDetail").textContent =
+            `${pour.delivered_ml.toFixed(1)} / ${pour.target_ml.toFixed(0)} ml • ${pour.elapsed_s.toFixed(1)} s`;
+          el("btnCancel").style.display = "";
+        } else {
+          el("barDetail").textContent =
+            `${pour.state} • ${pour.delivered_ml.toFixed(1)} / ${pour.target_ml.toFixed(0)} ml • ${pour.message || ""}`;
+          el("btnCancel").style.display = "none";
+        }
+        lastPour = pour.state;
+      }
+
+      function renderReady(status) {
+        el("tempC").textContent = status.temp_ok ? status.temp_c.toFixed(1) : "--";
+        const pill = el("readyPill");
+        pill.className = "pill";
+        if (!status.temp_ok) {
+          pill.textContent = status.temp_fault ? `Sensor: ${status.temp_fault}` : "Sensor fault";
+          pill.classList.add("bad");
+        } else if (status.ready) {
+          pill.textContent = `Ready • ${status.setpoint_c.toFixed(0)} °C`;
+          pill.classList.add("ok");
+        } else {
+          const d = status.setpoint_c - status.temp_c;
+          pill.textContent = `Warming ${d > 0 ? "+" : ""}${d.toFixed(1)} °C`;
+          pill.classList.add("warn");
+        }
+
+        const canPour = status.temp_ok && status.pour.state !== "pouring";
+        for (const b of document.querySelectorAll(".drink")) {
+          b.disabled = !canPour;
+        }
+      }
+
+      async function refresh() {
+        try {
+          const status = await apiGet("/kiosk/status");
+          renderReady(status);
+          renderPour(status.pour);
+        } catch (e) {
+          el("readyPill").className = "pill bad";
+          el("readyPill").textContent = "Offline";
+        }
+      }
+
+      el("btnCancel").onclick = cancel;
+
+      (async function main() {
+        await loadDrinks().catch((e) => showToast(`Could not load drinks: ${e.message}`));
+        await refresh();
+        setInterval(refresh, 1000);
+      })();
+    </script>
+  </body>
+</html>

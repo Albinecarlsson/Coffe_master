@@ -32,5 +32,13 @@ class Settings(BaseModel):
     heater_window_s: float = float(os.getenv("HEATER_WINDOW_S", "1.0"))
     valve_gpio_pin: int = int(os.getenv("VALVE_GPIO_PIN", "27"))
     valve_active_high: bool = _get_bool("VALVE_ACTIVE_HIGH", True)
+    pump_gpio_pin: int = int(os.getenv("PUMP_GPIO_PIN", "22"))
+    pump_active_high: bool = _get_bool("PUMP_ACTIVE_HIGH", True)
+
+    # Dosing
+    # Calibrated brew flow: measure it by timing a pour into a cup on a scale.
+    brew_flow_ml_s: float = float(os.getenv("BREW_FLOW_ML_S", "1.1"))
+    # How close to the setpoint the boiler must be before a pour is allowed.
+    ready_tolerance_c: float = float(os.getenv("READY_TOLERANCE_C", "2.0"))
 
 settings = Settings()

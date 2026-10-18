@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from espresso_mod.config import settings
 from espresso_mod.domain.clock import Clock
-from espresso_mod.hal.base import Closable, HeaterActuator, TemperatureSensor, ValveActuator
-from espresso_mod.hal.gpio import GpioHeater, GpioValve, open_output_pin
+from espresso_mod.hal.base import (
+    Closable,
+    HeaterActuator,
+    PumpActuator,
+    TemperatureSensor,
+    ValveActuator,
+)
+from espresso_mod.hal.gpio import GpioHeater, GpioPump, GpioValve, open_output_pin
 from espresso_mod.hal.rtd_max31865 import open_sensor
 from espresso_mod.hal.sim import SimParams, SimPlant
 from espresso_mod.services.control import ControlLoop
+from espresso_mod.services.doser import Doser
 from espresso_mod.services.shot_runner import ShotRunner
 from espresso_mod.services.telemetry import TelemetryBuffer, TelemetrySampler
 
@@ -16,6 +23,8 @@ class Runtime:
         self.sensor: TemperatureSensor
         self.heater: HeaterActuator
         self.valve: ValveActuator
+        # None in sim mode: the plant's valve already stands in for the flow.
+        self.pump: PumpActuator | None = None
         # Devices holding an OS handle (SPI, GPIO) that shutdown must release.
         # Empty in sim mode, where the plant is a plain object.
         self._devices: list[Closable] = []
@@ -37,16 +46,17 @@ class Runtime:
                 wires=settings.rtd_wires,
                 filter_hz=settings.rtd_filter_hz,
             )
-            heater = GpioHeater(
+            self.heater = GpioHeater(
                 open_output_pin(settings.heater_gpio_pin, active_high=settings.heater_active_high),
                 window_s=settings.heater_window_s,
             )
-            valve = GpioValve(
+            self.valve = GpioValve(
                 open_output_pin(settings.valve_gpio_pin, active_high=settings.valve_active_high)
             )
-            self.heater = heater
-            self.valve = valve
-            self._devices = [heater, valve]
+            self.pump = GpioPump(
+                open_output_pin(settings.pump_gpio_pin, active_high=settings.pump_active_high)
+            )
+            self._devices = [self.heater, self.valve, self.pump]
         else:
             raise ValueError(f"Unknown HARDWARE_MODE={settings.hardware_mode}")
 
@@ -69,6 +79,15 @@ class Runtime:
         # Shot runner (non-blocking)
         self.shots = ShotRunner(control=self.control, valve=self.valve, clock=clock)
 
+        # Drink dosing (non-blocking). Shares the injected clock, so tests can
+        # drive a whole pour without waiting for it.
+        self.doser = Doser(
+            self.valve,
+            pump=self.pump,
+            brew_flow_ml_s=settings.brew_flow_ml_s,
+            clock=clock,
+        )
+
     def stop(self) -> None:
         """Stop every background thread this runtime started, then power down.
 
@@ -76,6 +95,7 @@ class Runtime:
         leave the heater energised.
         """
         self.shots.cancel()
+        self.doser.stop()
         self.control.stop()
         self.telemetry_sampler.stop()
         self.heater.set_power(0.0)

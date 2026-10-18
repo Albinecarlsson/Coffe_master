@@ -13,7 +13,7 @@ import threading
 from typing import Protocol, cast
 
 from espresso_mod.domain.clock import Clock, SystemClock
-from espresso_mod.hal.base import HeaterActuator, ValveActuator
+from espresso_mod.hal.base import HeaterActuator, PumpActuator, ValveActuator
 
 # A solenoid has two states, so a fractional demand cannot be honoured: it opens
 # at or above this and stays closed below it. The built-in profiles ask for 0.2
@@ -133,7 +133,31 @@ class GpioHeater(HeaterActuator):
         return self._window_s - elapsed
 
 
-class GpioValve(ValveActuator):
+class SwitchedOutput:
+    """Shared behaviour for a single GPIO output that starts de-energised."""
+
+    def __init__(self, pin: OutputPin) -> None:
+        self._pin = pin
+        self._on = False
+        self._pin.off()
+
+    def get_on(self) -> bool:
+        return self._on
+
+    def close(self) -> None:
+        """Drive the output low, then release the pin."""
+        self._set(False)
+        self._pin.close()
+
+    def _set(self, on: bool) -> None:
+        self._on = on
+        if on:
+            self._pin.on()
+        else:
+            self._pin.off()
+
+
+class GpioValve(SwitchedOutput, ValveActuator):
     """Solenoid valve driver.
 
     The valve opens at or above ``open_threshold`` and is closed below it, so a
@@ -141,25 +165,26 @@ class GpioValve(ValveActuator):
     """
 
     def __init__(self, pin: OutputPin, *, open_threshold: float = _OPEN_THRESHOLD) -> None:
-        self._pin = pin
+        super().__init__(pin)
         self._open_threshold = float(open_threshold)
-        self._open = False
-        self._pin.off()
 
     def set_open(self, open_0_to_1: float) -> None:
-        self._open = float(open_0_to_1) >= self._open_threshold
-        if self._open:
-            self._pin.on()
-        else:
-            self._pin.off()
+        self._set(float(open_0_to_1) >= self._open_threshold)
 
     def get_open(self) -> float:
-        return 1.0 if self._open else 0.0
+        return 1.0 if self._on else 0.0
 
-    def close(self) -> None:
-        self._open = False
-        self._pin.off()
-        self._pin.close()
+
+class GpioPump(SwitchedOutput, PumpActuator):
+    """Vibration pump driver.
+
+    The pump sits on the mains side behind its own relay or SSR; only the
+    switching line is on the Pi. Closing the water path pump-first is the
+    caller's job, since a pump pushing against a shut valve has nowhere to go.
+    """
+
+    def set_on(self, on: bool) -> None:
+        self._set(bool(on))
 
 
 def open_output_pin(pin: int, *, active_high: bool = True) -> OutputPin:  # pragma: no cover

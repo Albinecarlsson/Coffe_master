@@ -44,3 +44,36 @@ class ShotStatus(BaseModel):
     step_elapsed_s: float = 0.0
     total_elapsed_s: float = 0.0
     message: str | None = None
+
+
+# ---- Drinks & dosing ----
+
+class DrinkOut(BaseModel):
+    key: str
+    name: str
+    description: str
+    water_ml: float
+    setpoint_c: float
+
+class DrinkList(BaseModel):
+    drinks: list[DrinkOut]
+    brew_flow_ml_s: float
+
+class PourStatus(BaseModel):
+    state: str  # "idle" | "pouring" | "done" | "canceled" | "error"
+    drink: str | None = None
+    target_ml: float = 0.0
+    delivered_ml: float = 0.0
+    elapsed_s: float = 0.0
+    message: str | None = None
+
+class KioskStatus(BaseModel):
+    """Everything the kiosk screen needs, in one poll."""
+
+    temp_c: float
+    temp_ok: bool
+    temp_fault: str | None
+    setpoint_c: float
+    control_enabled: bool
+    ready: bool
+    pour: PourStatus
