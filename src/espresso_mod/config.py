@@ -55,6 +55,12 @@ class Settings(BaseModel):
     # How close to the setpoint the boiler must be before a pour is allowed.
     ready_tolerance_c: float = float(os.getenv("READY_TOLERANCE_C", "2.0"))
 
+    # Preinfusion
+    # End each pump burst once the puck reaches this pressure (bar), keeping the
+    # soak and the step's total time. 0 disables guidance and keeps the fixed
+    # timed pulse. Needs a healthy sender; a faulty reading changes nothing.
+    preinfusion_target_bar: float = float(os.getenv("PREINFUSION_TARGET_BAR", "2.0"))
+
     # Shot history (SQLite). Created lazily on the first pour.
     history_db_path: str = os.getenv("HISTORY_DB_PATH", "data/history.db")
 

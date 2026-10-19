@@ -1,9 +1,10 @@
 """Peak brew pressure for one shot.
 
 The pressure sensor is sampled by the telemetry thread, but a pour reports its
-own peak when it finishes. Rather than let the pour thread read the sensor too,
-the sampler feeds this small accumulator: it is reset when a pour starts and read
-when the pour is written to history.
+own peak when it finishes. The sampler feeds this small accumulator: it is reset
+when a pour starts and read when the pour is written to history. The pour thread
+may also read the sender to end a preinfusion burst at its target; the peak still
+comes from the sampler, so every trace and history row has one source.
 
 Only healthy readings are observed; a fault must not look like a 16 bar shot.
 """

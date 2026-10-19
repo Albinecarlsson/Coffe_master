@@ -38,13 +38,12 @@ All hardware interactions go through a **Hardware Abstraction Layer (HAL)**, all
 - ✅ **Thermal Simulation** – realistic boiler physics model for offline development
 - ✅ **MAX31865 RTD Driver** – PT100/PT1000 over SPI, with fault decoding and range checks
 - ✅ **GPIO Actuators** – time-proportioned SSR heater, plus solenoid valve and pump for `HARDWARE_MODE=rtd`
-- ✅ **Pump-Pulsed Preinfusion** – wet the puck in bursts before the measured pour
+- ✅ **Pump-Pulsed Preinfusion** – wet the puck in bursts, pressure-limited when the sender is healthy
 - ✅ **Shot History** – every shot and pour appended to SQLite, with the last few on the kiosk
 - ✅ **Brew Pressure Monitoring** – 0–16 bar sender through an ADS1115, live on both UIs and logged per shot
 
 ### Roadmap
 - 🔜 WebSocket push for real-time UI updates (the UI currently polls)
-- 🔜 Pressure-guided preinfusion (stop the pulse when the puck is pressurised)
 - 🔜 Volumetric dosing from a real flow meter (today it is time-based)
 - 🔜 Gravimetric dosing (load cell under the drip tray)
 - 🔜 Hot-water path, so americanos and tea can be poured in one action
@@ -266,6 +265,7 @@ Then set `HARDWARE_MODE=rtd` in `.env` and map the hardware to your board:
 | `HEATER_WINDOW_S` | `1.0` | Time-proportioning window for the relay |
 | `BREW_FLOW_ML_S` | `1.1` | Calibrated flow used to convert volume into pump seconds |
 | `READY_TOLERANCE_C` | `2.0` | How close to setpoint the boiler must be before a pour is allowed |
+| `PREINFUSION_TARGET_BAR` | `2.0` | End a preinfusion burst at this pressure; `0` keeps the fixed timing |
 | `HISTORY_DB_PATH` | `data/history.db` | SQLite file for shot history; created on first use |
 | `PRESSURE_ENABLED` | `true` | Set `false` while no sender is fitted; the UI shows a dash, not a fake 0 bar |
 | `PRESSURE_I2C_BUS` / `PRESSURE_I2C_ADDRESS` | `1` / `0x48` | ADS1115 bus and address (`0x48`–`0x4B`) |
@@ -308,7 +308,10 @@ is zero — refusing a profile step silently is worse than opening a binary valv
 Because of that, the built-in shot profiles get their preinfusion from the pump,
 not the valve: a short burst of full pressure, then a soak with the valve still
 open while the pressure decays into the puck, repeated before the continuous
-pour. `ShotStep.pump_on=False` gives a plain dwell. The timings in
+pour. `ShotStep.pump_on=False` gives a plain dwell. When the pressure sender is
+healthy, each burst also ends as soon as brew pressure reaches
+`PREINFUSION_TARGET_BAR` (default 2 bar); the soak and the step's total time are
+unchanged, and a sender fault falls back to the fixed timings. The timings in
 `domain/shot_profiles.py` are a starting point — they depend on the pump, the
 basket and the grind, so tune them on the bench (Phase 4 in
 [docs/renovation.md](docs/renovation.md)).
@@ -370,9 +373,12 @@ keeps roughly twice its own weight in water, so a 9 g dose at 30 ml through the 
 yields about 12 ml. Weigh the cup when calibrating.
 
 Every drink also gets a pump-pulsed preinfusion before the measured pour: 1.5 s on,
-1.5 s off, for six seconds. That water stays in the puck, so it is **not** counted
-against `water_ml`; only the continuous pour after it counts. This is the same idea
-as the shot-profile preinfusion above, driven from `Drink.preinfusion`.
+1.5 s off, for six seconds. Those bursts are pressure-limited by the same
+`PREINFUSION_TARGET_BAR` setting as the shot profiles: a healthy sender ends a
+burst early, but the six-second window and the soaks are unchanged. That water
+stays in the puck, so it is **not** counted against `water_ml`; only the
+continuous pour after it counts. This is the same idea as the shot-profile
+preinfusion above, driven from `Drink.preinfusion`.
 
 ### Shot history
 

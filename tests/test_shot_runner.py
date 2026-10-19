@@ -5,12 +5,19 @@ import pytest
 from espresso_mod.domain.clock import SystemClock
 from espresso_mod.domain.pulse import Pulse
 from espresso_mod.domain.shot_profiles import SHOT_PROFILES, ShotStep
+from espresso_mod.hal.base import PressureReading
 from espresso_mod.hal.sim import SimParams, SimPlant
 from espresso_mod.services.control import ControlLoop
 from espresso_mod.services.shot_runner import ShotRunner
 
 
-def _make_runner(clock=None, on_finish=None, pump=None):
+def _make_runner(
+    clock=None,
+    on_finish=None,
+    pump=None,
+    pressure=None,
+    preinfusion_target_bar: float = 0.0,
+):
     plant = SimPlant(initial_c=90.0, params=SimParams(ambient_c=22.0, fixed_dt=0.1))
     # The control loop is a dependency only; classic_espresso never changes the
     # setpoint, so there is no need to start its thread for these tests.
@@ -21,6 +28,8 @@ def _make_runner(clock=None, on_finish=None, pump=None):
             valve=plant,
             clock=clock,
             pump=pump,
+            pressure=pressure,
+            preinfusion_target_bar=preinfusion_target_bar,
             on_finish=on_finish,
         ),
         plant,
@@ -46,6 +55,16 @@ class RecordingPump:
 
     def transitions(self) -> list[tuple[float, bool]]:
         return list(self.events)
+
+
+class PumpPressure:
+    """Nine bar while the pump runs, zero while it is off."""
+
+    def __init__(self, pump: RecordingPump) -> None:
+        self._pump = pump
+
+    def read_pressure(self) -> PressureReading:
+        return PressureReading(bar=9.0 if self._pump.get_on() else 0.0, ok=True)
 
 
 def _wait_for_state(runner, states, timeout=5.0):
@@ -182,6 +201,35 @@ def test_a_pulsed_step_cycles_the_pump(fake_clock, monkeypatch):
     assert not pump.on
     # the valve is shut once the shot is over, whatever the pump did
     assert plant.get_open() == 0.0
+
+
+def test_a_pulsed_step_is_cut_at_the_target_pressure(fake_clock, monkeypatch):
+    monkeypatch.setitem(
+        SHOT_PROFILES,
+        "test_pressure",
+        [ShotStep(seconds=6.0, valve_open=1.0, pulse=Pulse(on_s=1.0, off_s=1.0))],
+    )
+    pump = RecordingPump(fake_clock)
+    runner, _ = _make_runner(
+        clock=fake_clock,
+        pump=pump,
+        pressure=PumpPressure(pump),
+        preinfusion_target_bar=2.0,
+    )
+    start = fake_clock.now()
+
+    runner.start("test_pressure")
+    state = _wait_for_state(runner, ("done", "error", "canceled"))
+
+    assert state.state == "done"
+    # The step still runs its full 6 s, but as a train of short bursts.
+    assert state.total_elapsed_s == pytest.approx(6.0, abs=0.1)
+    ons = [ts for ts, on in pump.transitions() if on]
+    offs = [ts for ts, on in pump.transitions() if not on]
+    # An uncut 1 s on / 1 s off would give three ons in this window.
+    assert len(ons) >= 4
+    assert all(off - on < 0.2 for on, off in zip(ons, offs, strict=True))
+    assert start == pytest.approx(pump.transitions()[0][0])
 
 
 def test_a_dwell_step_keeps_the_pump_off(fake_clock, monkeypatch):

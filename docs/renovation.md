@@ -290,7 +290,7 @@ parts against your model's parts list, not from a generic listing.
 | HTTP API + touch UI | `api.py`, `ui/` |
 | Drink catalogue and dosing | `domain/drinks.py`, `services/doser.py` |
 | Kiosk UI for drink selection | `ui/kiosk.html` |
-| Pump-pulsed preinfusion | `domain/pulse.py`, `services/pacing.py` |
+| Pump-pulsed preinfusion, pressure-limited when the sender is healthy | `domain/pulse.py`, `services/pacing.py` |
 | Shot history (SQLite), including peak pressure | `services/history.py` |
 | Brew pressure sender over I²C (ADS1115, live + per-shot peak) | `hal/pressure_ads1115.py`, `domain/pressure.py` |
 | Health endpoint (`/health`, 200/503) and a systemd unit | `api.py`, `deploy/` |

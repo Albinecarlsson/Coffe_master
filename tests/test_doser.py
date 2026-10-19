@@ -6,6 +6,7 @@ import pytest
 
 from espresso_mod.domain.drinks import DRINKS, Drink
 from espresso_mod.domain.pulse import Pulse
+from espresso_mod.hal.base import PressureReading
 from espresso_mod.services.doser import Doser
 
 
@@ -61,6 +62,25 @@ def _wait_until(predicate, timeout: float = 2.0) -> bool:
             return True
         time.sleep(0.001)
     return predicate()
+
+
+class PumpPressure:
+    """Nine bar while the pump runs, zero while it is off."""
+
+    def __init__(self, pump: FakePump) -> None:
+        self._pump = pump
+
+    def read_pressure(self) -> PressureReading:
+        return PressureReading(bar=9.0 if self._pump.on else 0.0, ok=True)
+
+
+class FixedPressure:
+    def __init__(self, bar: float, ok: bool = True) -> None:
+        self._bar = bar
+        self._ok = ok
+
+    def read_pressure(self) -> PressureReading:
+        return PressureReading(bar=self._bar, ok=self._ok)
 
 
 def _drink(water_ml: float = 30.0) -> Drink:
@@ -236,6 +256,58 @@ def test_cancel_during_preinfusion_leaves_the_pump_off():
         assert not pump.on
     finally:
         doser.stop()
+
+
+def test_preinfusion_bursts_are_cut_at_the_target_pressure(fake_clock):
+    pump = FakePump(clock=fake_clock)
+    doser = Doser(
+        FakeValve(),
+        pump=pump,
+        pressure=PumpPressure(pump),
+        preinfusion_target_bar=2.0,
+        brew_flow_ml_s=2.0,
+        clock=fake_clock,
+    )
+    start = fake_clock.now()
+
+    doser.start(_preinfused(10.0))
+    assert _wait_until(lambda: doser.status().state == "done")
+
+    transitions = pump.transitions()
+    # The first burst ends after a 20 ms tick, long before its 1 s on-time.
+    assert transitions[0] == (start, True)
+    assert transitions[1][1] is False
+    assert transitions[1][0] - start < 0.1
+    # The 2 s window is unchanged, so the measured pour still starts at 2 s...
+    assert transitions[-2][1] is True
+    assert transitions[-2][0] == pytest.approx(start + 2.0, abs=0.05)
+    # ...and the drink still takes 2 s of wetting plus 5 s of pouring.
+    assert transitions[-1][1] is False
+    assert transitions[-1][0] == pytest.approx(start + 7.0, abs=0.05)
+
+
+def test_a_faulty_sender_keeps_the_timed_preinfusion(fake_clock):
+    pump = FakePump(clock=fake_clock)
+    doser = Doser(
+        FakeValve(),
+        pump=pump,
+        pressure=FixedPressure(9.0, ok=False),
+        preinfusion_target_bar=2.0,
+        brew_flow_ml_s=2.0,
+        clock=fake_clock,
+    )
+    start = fake_clock.now()
+
+    doser.start(_preinfused(10.0))
+    assert _wait_until(lambda: doser.status().state == "done")
+
+    # 9 bar would be well past the target, but the sender is not believable.
+    assert [(ts - start, on) for ts, on in pump.transitions()] == [
+        (0.0, True),
+        (1.0, False),
+        (2.0, True),
+        (7.0, False),
+    ]
 
 
 # ---- safety ----

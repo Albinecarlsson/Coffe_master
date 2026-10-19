@@ -36,8 +36,8 @@ class Runtime:
         # In sim mode the plant is the pump too, so preinfusion pulsing shows up
         # in the telemetry instead of being a no-op.
         self.pump: PumpActuator | None = None
-        # Optional: brew pressure is monitoring only, so a machine without the
-        # sender (or with PRESSURE_ENABLED=false) still runs.
+        # Optional: brew pressure is monitoring plus preinfusion guidance, so a
+        # machine without the sender (or with PRESSURE_ENABLED=false) still runs.
         self.pressure: PressureSensor | None = None
         # Devices holding an OS handle (SPI, I2C, GPIO) that shutdown must release.
         # Empty in sim mode, where the plant is a plain object.
@@ -119,6 +119,8 @@ class Runtime:
             valve=self.valve,
             clock=clock,
             pump=self.pump,
+            pressure=self.pressure,
+            preinfusion_target_bar=settings.preinfusion_target_bar,
             on_start=self.pressure_peak.reset,
             on_finish=self._record_shot,
         )
@@ -128,6 +130,8 @@ class Runtime:
         self.doser = Doser(
             self.valve,
             pump=self.pump,
+            pressure=self.pressure,
+            preinfusion_target_bar=settings.preinfusion_target_bar,
             brew_flow_ml_s=settings.brew_flow_ml_s,
             clock=clock,
             on_start=self.pressure_peak.reset,

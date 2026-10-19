@@ -15,8 +15,8 @@ from dataclasses import dataclass
 
 from espresso_mod.domain.clock import Clock, SystemClock
 from espresso_mod.domain.drinks import Drink
-from espresso_mod.hal.base import PumpActuator, ValveActuator
-from espresso_mod.services.pacing import pulse_until, wait_until
+from espresso_mod.hal.base import PressureSensor, PumpActuator, ValveActuator
+from espresso_mod.services.pacing import pressure_cutoff, pulse_until, wait_until
 
 
 @dataclass
@@ -50,6 +50,8 @@ class Doser:
         valve: ValveActuator,
         *,
         pump: PumpActuator | None = None,
+        pressure: PressureSensor | None = None,
+        preinfusion_target_bar: float = 0.0,
         brew_flow_ml_s: float = 1.1,
         clock: Clock | None = None,
         on_start: Callable[[], None] | None = None,
@@ -61,6 +63,9 @@ class Doser:
         self.valve = valve
         self.pump = pump
         self.brew_flow_ml_s = float(brew_flow_ml_s)
+        # None when there is no sender or guidance is disabled; a machine without
+        # the optional sender keeps its timed preinfusion.
+        self._cut_when = pressure_cutoff(pressure, preinfusion_target_bar)
         self._clock: Clock = clock or SystemClock()
         self._on_start = on_start
         self._on_finish = on_finish
@@ -135,6 +140,7 @@ class Doser:
                     drink.preinfusion,
                     self._clock.now() + drink.preinfusion_s,
                     self._is_canceled,
+                    cut_when=self._cut_when,
                 )
                 if not wet_done:
                     self._finish("canceled", "Canceled by user")

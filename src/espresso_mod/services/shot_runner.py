@@ -7,9 +7,9 @@ from dataclasses import dataclass
 
 from espresso_mod.domain.clock import Clock, SystemClock
 from espresso_mod.domain.shot_profiles import SHOT_PROFILES, ShotStep
-from espresso_mod.hal.base import PumpActuator, ValveActuator
+from espresso_mod.hal.base import PressureSensor, PumpActuator, ValveActuator
 from espresso_mod.services.control import ControlLoop
-from espresso_mod.services.pacing import pulse_until, wait_until
+from espresso_mod.services.pacing import pressure_cutoff, pulse_until, wait_until
 
 
 @dataclass
@@ -41,6 +41,8 @@ class ShotRunner:
         clock: Clock | None = None,
         *,
         pump: PumpActuator | None = None,
+        pressure: PressureSensor | None = None,
+        preinfusion_target_bar: float = 0.0,
         on_start: Callable[[], None] | None = None,
         on_finish: Callable[[], None] | None = None,
     ) -> None:
@@ -48,6 +50,9 @@ class ShotRunner:
         self.valve = valve
         # None means valve-only: the plant or test double models the flow itself.
         self.pump = pump
+        # None when there is no sender or guidance is disabled: a pulsed step then
+        # keeps the fixed on/off timings from the profile.
+        self._cut_when = pressure_cutoff(pressure, preinfusion_target_bar)
         self._clock: Clock = clock or SystemClock()
         self._on_start = on_start
         self._on_finish = on_finish
@@ -129,7 +134,14 @@ class ShotRunner:
             return wait_until(self._clock, deadline, self._is_canceled)
 
         if step.pulse is not None:
-            return pulse_until(self.pump, self._clock, step.pulse, deadline, self._is_canceled)
+            return pulse_until(
+                self.pump,
+                self._clock,
+                step.pulse,
+                deadline,
+                self._is_canceled,
+                cut_when=self._cut_when,
+            )
 
         self._set_pump(True)
         return wait_until(self._clock, deadline, self._is_canceled)
