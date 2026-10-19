@@ -51,8 +51,10 @@
         gap: 18px;
         padding: 14px 26px;
         border-bottom: 1px solid var(--border);
-        background: rgba(18, 14, 11, 0.82);
-        backdrop-filter: blur(14px);
+        /* Opaque rather than a backdrop blur: a Pi pays dearly for blur, and
+           headless Chromium corrupts frames that use it. */
+        background: rgba(16, 12, 9, 0.97);
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
       }
       .brand { display: flex; align-items: baseline; gap: 16px; min-width: 0; }
       .wordmark {
@@ -298,6 +300,11 @@
       .hist .d { color: var(--muted); font-variant-numeric: tabular-nums; }
       .hist.bad { border-color: rgba(232, 105, 92, 0.4); }
       .hist.bad .d { color: var(--danger); }
+      .hist.newest {
+        border-color: rgba(232, 176, 113, 0.4);
+        background: rgba(232, 176, 113, 0.07);
+      }
+      .hist.newest .n { color: var(--accent); }
 
       .foot {
         flex: none;
@@ -1030,9 +1037,10 @@
           wrap.appendChild(empty);
           return;
         }
-        for (const e of body.entries) {
+        body.entries.forEach((e, index) => {
           const chip = document.createElement("div");
-          chip.className = "hist" + (e.state === "error" ? " bad" : "");
+          chip.className =
+            "hist" + (e.state === "error" ? " bad" : "") + (index === 0 ? " newest" : "");
           const name = document.createElement("span");
           name.className = "n";
           const found = drinks.find((d) => d.key === e.name);
@@ -1047,7 +1055,7 @@
           detail.textContent = `${amount}${peak}${outcome} · ${relativeTime(e.finished_at)}`;
           chip.append(name, detail);
           wrap.appendChild(chip);
-        }
+        });
       }
 
       // ---- rendering ----
