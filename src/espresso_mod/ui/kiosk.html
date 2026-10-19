@@ -508,6 +508,148 @@
         cursor: pointer;
       }
 
+      /* ---- attract (idle) ---- */
+
+      .attract {
+        position: fixed;
+        inset: 0;
+        z-index: 25;
+        display: grid;
+        place-items: center;
+        padding: 32px;
+        overflow: hidden;
+        background:
+          radial-gradient(70% 55% at 50% 16%, rgba(232, 176, 113, 0.16), transparent 70%),
+          radial-gradient(60% 50% at 50% 112%, rgba(201, 128, 60, 0.1), transparent 70%),
+          #0d0a08;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        cursor: pointer;
+        transition: opacity 0.45s ease, visibility 0.45s;
+      }
+      .attract.show { opacity: 1; visibility: visible; pointer-events: auto; }
+
+      .attract-inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: clamp(8px, 1.8vh, 20px);
+      }
+      .attract-mark {
+        font-family: var(--serif);
+        font-size: 14px;
+        letter-spacing: 0.5em;
+        padding-left: 0.5em; /* balance the trailing letter-space */
+        text-transform: uppercase;
+        color: var(--accent);
+        opacity: 0.85;
+      }
+      .attract-clock {
+        font-family: var(--serif);
+        font-size: clamp(76px, 15vw, 168px);
+        font-weight: 400;
+        line-height: 0.96;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        text-shadow: 0 12px 60px rgba(232, 176, 113, 0.18);
+      }
+      .attract-date {
+        font-size: clamp(11px, 1.4vw, 14px);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      /* A drawn cup with slow wisps of steam: the only motion on an idle screen. */
+      .attract-cup { position: relative; width: 110px; height: 76px; margin-top: 2px; }
+      .attract-cup #attractCup { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); }
+      .attract-cup .cup { width: 60px; height: 60px; color: var(--muted); opacity: 0.8; }
+      .wisp {
+        position: absolute;
+        bottom: 52px;
+        left: 50%;
+        width: 6px;
+        height: 32px;
+        margin-left: -3px;
+        border-radius: 999px;
+        background: linear-gradient(to top, rgba(244, 236, 227, 0), rgba(244, 236, 227, 0.4));
+        filter: blur(2px);
+        opacity: 0;
+      }
+      /* Animate only while the idle view is on screen: nothing spins in the
+         background the rest of the day. */
+      .attract.show .wisp { animation: wisp-rise 5.4s ease-in-out infinite; }
+      /* Negative delays: the steam is already rising the moment the view appears. */
+      .wisp.w1 { animation-delay: -0.6s; }
+      .wisp.w2 { left: 57%; height: 42px; animation-delay: -2.1s; }
+      .wisp.w3 { left: 43%; height: 26px; animation-delay: -3.9s; }
+      @keyframes wisp-rise {
+        0% { opacity: 0; transform: translateY(10px) scale(0.8) rotate(0deg); }
+        30% { opacity: 0.85; }
+        100% { opacity: 0; transform: translateY(-30px) scale(1.2) rotate(7deg); }
+      }
+
+      .attract-temp {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        margin-top: clamp(4px, 1.5vh, 18px);
+      }
+      .attract-ring-wrap { position: relative; width: clamp(104px, 15vh, 132px); height: clamp(104px, 15vh, 132px); }
+      .attract-ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+      .attract-ring circle { fill: none; stroke-width: 2.5; }
+      .attract-ring .track { stroke: rgba(255, 255, 255, 0.07); }
+      .attract-ring .fill {
+        stroke: var(--accent);
+        stroke-linecap: round;
+        stroke-dasharray: 113.1;
+        stroke-dashoffset: 113.1;
+        transition: stroke-dashoffset 1.2s ease, stroke 0.6s ease;
+      }
+      .attract.show .attract-ring .fill { animation: ring-breathe 7s ease-in-out infinite; }
+      .attract-ring.ok .fill { stroke: var(--ok); }
+      .attract-ring.bad .fill { stroke: var(--danger); }
+      @keyframes ring-breathe {
+        0%, 100% { opacity: 0.65; }
+        50% { opacity: 1; }
+      }
+      .attract-ring-label {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        line-height: 1;
+      }
+      .attract-ring-label #attractTemp {
+        font-size: clamp(23px, 3vw, 30px);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .attract-ring-label .unit { font-size: 10px; letter-spacing: 0.1em; color: var(--muted); }
+      .attract-status { min-height: 1.4em; font-size: clamp(13px, 1.6vw, 16px); color: var(--muted); }
+      .attract-status.ok { color: var(--ok); }
+      .attract-status.warn { color: var(--warn); }
+      .attract-status.bad { color: var(--danger); }
+      .attract-hint {
+        margin-top: clamp(16px, 4vh, 42px);
+        font-size: 11px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--muted);
+        opacity: 0.6;
+      }
+      .attract.show .attract-hint { animation: hint-breathe 3.8s ease-in-out infinite; }
+      @keyframes hint-breathe {
+        0%, 100% { opacity: 0.35; }
+        50% { opacity: 0.75; }
+      }
+
       /* ---- small screens ---- */
 
       @media (max-width: 1000px) {
@@ -521,6 +663,7 @@
         .brand .clock { display: none; }
         .status .link { display: none; }
         .foot .note { display: none; }
+        .attract-cup { display: none; }
       }
       @media (max-height: 560px) {
         .hero h1 { font-size: 24px; }
@@ -528,6 +671,12 @@
         .cup { width: 44px; height: 44px; }
         .ring-wrap { width: 54px; height: 54px; }
         .recent-block { padding-top: 18px; }
+        .attract { padding: 18px; }
+        .attract-clock { font-size: 64px; }
+        .attract-cup { display: none; }
+        .attract-ring-wrap { width: 92px; height: 92px; }
+        .attract-inner { gap: 6px; }
+        .attract-hint { margin-top: 10px; }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -580,6 +729,37 @@
       <span class="spec">Isomac Brio · 0.2 L boiler · 3.5 L tank</span>
     </div>
 
+    <div id="attract" class="attract" aria-hidden="true">
+      <div class="attract-inner">
+        <div class="attract-mark">Brio</div>
+        <div id="attractClock" class="attract-clock">--:--</div>
+        <div id="attractDate" class="attract-date"></div>
+
+        <div class="attract-cup" aria-hidden="true">
+          <span class="wisp w1"></span>
+          <span class="wisp w2"></span>
+          <span class="wisp w3"></span>
+          <div id="attractCup"></div>
+        </div>
+
+        <div class="attract-temp">
+          <div class="attract-ring-wrap">
+            <svg id="attractRing" class="attract-ring" viewBox="0 0 44 44" aria-hidden="true">
+              <circle class="track" cx="22" cy="22" r="18" />
+              <circle id="attractRingFill" class="fill" cx="22" cy="22" r="18" />
+            </svg>
+            <div class="attract-ring-label">
+              <span id="attractTemp">--</span>
+              <span class="unit">°C</span>
+            </div>
+          </div>
+          <div id="attractStatus" class="attract-status"></div>
+        </div>
+
+        <div class="attract-hint">Tap anywhere to start</div>
+      </div>
+    </div>
+
     <div id="pourOverlay" class="overlay" role="dialog" aria-modal="true" aria-label="Pour in progress">
       <div class="pour-card">
         <div class="pour-top">
@@ -630,6 +810,10 @@
       let overlayHideAt = 0;
       let busy = false;
 
+      // Idle screen: after a minute without a touch, turn into a clock.
+      const ATTRACT_AFTER_MS = 60_000;
+      let lastInteractionAt = Date.now();
+
       // ---- helpers ----
 
       async function apiGet(path) {
@@ -674,6 +858,63 @@
         ring.classList.add(tone);
         const clamped = Math.max(0, Math.min(1, pct));
         el("ringFill").style.strokeDashoffset = String(RING_LEN * (1 - clamped));
+      }
+
+      function setAttract(show) {
+        const node = el("attract");
+        if (node.classList.contains("show") === show) return;
+        node.classList.toggle("show", show);
+        node.setAttribute("aria-hidden", show ? "false" : "true");
+      }
+
+      function noteInteraction() {
+        lastInteractionAt = Date.now();
+        setAttract(false);
+      }
+
+      function attractDue() {
+        return Date.now() - lastInteractionAt >= ATTRACT_AFTER_MS;
+      }
+
+      function renderAttract(status) {
+        const now = new Date();
+        el("attractClock").textContent =
+          now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        el("attractDate").textContent =
+          now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
+
+        const ring = el("attractRing");
+        const fill = el("attractRingFill");
+        const line = el("attractStatus");
+        ring.classList.remove("ok", "warn", "bad");
+        line.className = "attract-status";
+        el("attractTemp").textContent = status.temp_ok ? status.temp_c.toFixed(1) : "--";
+
+        if (status.control_error) {
+          line.textContent = "Control fault";
+          line.classList.add("bad");
+          ring.classList.add("bad");
+          fill.style.strokeDashoffset = "0";
+        } else if (!status.temp_ok) {
+          line.textContent = status.temp_fault || "No temperature reading";
+          line.classList.add("bad");
+          ring.classList.add("bad");
+          fill.style.strokeDashoffset = String(RING_LEN);
+        } else if (status.ready) {
+          line.textContent = `Ready at ${status.setpoint_c.toFixed(0)} °C`;
+          line.classList.add("ok");
+          ring.classList.add("ok");
+          fill.style.strokeDashoffset = "0";
+        } else {
+          const delta = status.setpoint_c - status.temp_c;
+          line.textContent =
+            `Warming · ${delta > 0 ? "+" : ""}${delta.toFixed(1)} °C to go`;
+          line.classList.add("warn");
+          ring.classList.add("warn");
+          const span = Math.max(1, status.setpoint_c - 20);
+          const pct = Math.max(0, Math.min(1, (status.temp_c - 20) / span));
+          fill.style.strokeDashoffset = String(RING_LEN * (1 - pct));
+        }
       }
 
       function clockAndGreeting() {
@@ -912,7 +1153,19 @@
           const status = await apiGet("/kiosk/status");
           renderReady(status);
           renderPour(status);
+
+          // Attract only when the screen is calm: no pour card, no fault. A
+          // hidden problem must stay visible, so a fault cancels the idle view.
+          const overlayShown = el("pourOverlay").classList.contains("show");
+          const calm = !overlayShown && !status.control_error && status.temp_ok;
+          if (attractDue() && calm) {
+            renderAttract(status);
+            setAttract(true);
+          } else {
+            setAttract(false);
+          }
         } catch (e) {
+          setAttract(false);
           el("readyPill").className = "pill bad";
           el("readyPill").textContent = "Offline";
           el("statusSub").textContent = "Retrying…";
@@ -929,6 +1182,13 @@
       el("btnCancel").onclick = cancel;
       el("pourCup").innerHTML = cupMarkup("cup-pour");
       setCupLevel(el("pourCup"), 0);
+      el("attractCup").innerHTML = cupMarkup("cup-attract");
+      setCupLevel(el("attractCup"), 0);
+
+      // Any touch, key or scroll wakes the screen and restarts the idle timer.
+      document.addEventListener("pointerdown", noteInteraction, { passive: true });
+      document.addEventListener("keydown", noteInteraction);
+      document.addEventListener("wheel", noteInteraction, { passive: true });
 
       clockAndGreeting();
       setInterval(clockAndGreeting, 5000);

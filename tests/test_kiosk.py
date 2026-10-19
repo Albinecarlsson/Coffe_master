@@ -61,6 +61,10 @@ def test_kiosk_page_is_served(client):
     # The page is a shell; these are the nodes the inline script drives.
     assert 'id="drinks"' in response.text
     assert 'id="pourOverlay"' in response.text
+    # Idle attract view: big clock, temperature ring and steam wisps.
+    assert 'id="attract"' in response.text
+    assert 'id="attractClock"' in response.text
+    assert 'id="attractRing"' in response.text
 
 
 # ---- drinks ----

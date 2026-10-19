@@ -158,7 +158,11 @@ brew pressure on a 0–16 bar scale with a mark at 9 bar, turning amber-red abov
 13 bar — a choked shot is visible while it happens, not after. The result lingers
 for a moment, then clears itself. Tiles disable until the boiler is at temperature,
 or the pour can be forced from the toast that appears. Under the tiles, the last few
-drinks come back from the shot history as chips, including the peak pressure.
+drinks come back from the shot history as chips, including the peak pressure. After a
+minute without a touch the kiosk turns into an idle clock: a large serif time, the
+date, a cup trailing slow wisps of steam and a gently breathing temperature ring.
+Any tap or key brings the drinks back; faults and a running pour always take
+priority over the idle view.
 
 **Engineer dashboard — `http://127.0.0.1:8000/`** shares the same warm palette and
 shows live temperature, heater power, valve state and pressure (number plus a 0–16
