@@ -141,6 +141,13 @@ curl -X POST http://127.0.0.1:8000/drinks/cancel
 curl "http://127.0.0.1:8000/history?limit=5"
 ```
 
+### Health
+```bash
+# 200 when the machine is healthy, 503 when not. `-f` makes curl fail on 503,
+# which is what a monitor or timer should watch.
+curl -fsS http://127.0.0.1:8000/health
+```
+
 ---
 
 ## 🖥️ Touch UI
@@ -268,6 +275,9 @@ Then set `HARDWARE_MODE=rtd` in `.env` and map the hardware to your board:
 | `PRESSURE_DIVIDER` | `2.0` | Sender volts ÷ ADC volts (2.0 for a 10k/10k divider) |
 | `PRESSURE_ADS_PGA` | `4.096` | ADS1115 full-scale range in volts |
 | `PRESSURE_ADS_DATA_RATE` | `128` | Conversions per second (8…860) |
+
+To run the controller unattended, `deploy/` has a systemd unit and install notes,
+including how to poll `GET /health`. See `deploy/README.md`.
 
 ### MAX31865 RTD sensor
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from espresso_mod.config import settings
 from espresso_mod.domain.drinks import DRINKS
@@ -10,6 +10,7 @@ from espresso_mod.domain.models import (
     ControlEnable,
     DrinkList,
     DrinkOut,
+    HealthStatus,
     HistoryResponse,
     KioskStatus,
     PourStatus,
@@ -34,6 +35,18 @@ def get_runtime() -> Runtime:
     if _runtime is None:
         _runtime = Runtime()
     return _runtime
+
+
+def close_runtime() -> None:
+    """Stop the process-wide runtime and forget it.
+
+    Called by the app lifespan so a restart releases the GPIO/I2C/SPI handles and
+    leaves the element de-energised.
+    """
+    global _runtime
+    if _runtime is not None:
+        _runtime.stop()
+        _runtime = None
 
 
 def _pressure(rt: Runtime) -> PressureReading:
@@ -210,6 +223,41 @@ def drinks() -> DrinkList:
 @router.get("/kiosk/status", response_model=KioskStatus)
 def kiosk_status() -> KioskStatus:
     return _kiosk_status(get_runtime())
+
+
+@router.get(
+    "/health",
+    response_model=HealthStatus,
+    responses={503: {"model": HealthStatus, "description": "Unhealthy"}},
+)
+def health(response: Response) -> HealthStatus:
+    """Supervisor-friendly health: 200 when healthy, 503 when not.
+
+    Healthy means the control thread is alive, it is not reporting a fault, and
+    the temperature sensor reads. A missing pressure sender is not unhealthy: a
+    machine without the optional sender must still be considered fit to serve.
+    """
+    rt = get_runtime()
+    reading = rt.sensor.read()
+    pressure = _pressure(rt)
+    control_alive = rt.control.is_alive()
+    running = rt.shots.status().state == "running" or rt.doser.status().state == "pouring"
+    ok = control_alive and rt.control.last_error is None and reading.ok
+    if not ok:
+        response.status_code = 503
+    return HealthStatus(
+        ok=ok,
+        mode=rt.mode,
+        uptime_s=rt.uptime_s(),
+        running=running,
+        temp_ok=reading.ok,
+        temp_fault=reading.fault,
+        pressure_ok=pressure.ok,
+        pressure_fault=pressure.fault,
+        control_alive=control_alive,
+        control_enabled=rt.control.enabled,
+        control_error=rt.control.last_error,
+    )
 
 
 @router.post("/drinks/pour/{key}")

@@ -108,3 +108,27 @@ class HistoryEntry(BaseModel):
 
 class HistoryResponse(BaseModel):
     entries: list[HistoryEntry]
+
+
+# ---- Health ----
+
+
+class HealthStatus(BaseModel):
+    """Liveness and readiness for a supervisor (systemd, a watchdog, a monitor).
+
+    ``ok`` is the single bit a supervisor should act on; the rest is for a human
+    reading the response while something is wrong. Pressure is optional and never
+    makes a machine unhealthy.
+    """
+
+    ok: bool
+    mode: str  # "sim" | "rtd"
+    uptime_s: float
+    running: bool  # a shot or a pour is in progress
+    temp_ok: bool
+    temp_fault: str | None = None
+    pressure_ok: bool
+    pressure_fault: str | None = None
+    control_alive: bool
+    control_enabled: bool
+    control_error: str | None = None

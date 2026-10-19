@@ -206,3 +206,13 @@ def test_get_runtime_is_a_lazy_singleton(monkeypatch):
         assert api_module.get_runtime() is first
     finally:
         first.stop()
+
+
+def test_app_starts_the_runtime_at_boot_and_stops_it(monkeypatch):
+    monkeypatch.setattr(api_module, "_runtime", None)
+
+    with TestClient(app) as client:
+        assert api_module._runtime is not None
+        assert client.get("/health").status_code == 200
+
+    assert api_module._runtime is None

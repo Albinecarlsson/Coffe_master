@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from espresso_mod.config import settings
 from espresso_mod.domain.clock import Clock
 from espresso_mod.hal.base import (
@@ -24,6 +26,10 @@ from espresso_mod.services.telemetry import TelemetryBuffer, TelemetrySampler
 
 class Runtime:
     def __init__(self, clock: Clock | None = None) -> None:
+        # Reported by /health so a supervisor can tell a simulated machine from a
+        # wired one without guessing.
+        self.mode = settings.hardware_mode
+        self._started_ts = time.monotonic()
         self.sensor: TemperatureSensor
         self.heater: HeaterActuator
         self.valve: ValveActuator
@@ -129,6 +135,14 @@ class Runtime:
         )
 
     # ---- history ----
+
+    def uptime_s(self) -> float:
+        """Seconds since this runtime was constructed (wall clock, not injected).
+
+        Deliberately real time: uptime answers "how long has the process been up?",
+        which must not be fooled by a virtual clock in tests.
+        """
+        return max(0.0, time.monotonic() - self._started_ts)
 
     def _record_shot(self) -> None:
         state = self.shots.status()

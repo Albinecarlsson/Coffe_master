@@ -76,6 +76,14 @@ class ControlLoop:
         if self._thread:
             self._thread.join(timeout=1.0)
 
+    def is_alive(self) -> bool:
+        """True while the control thread is running.
+
+        A dead loop with ``enabled`` still true would otherwise look healthy from
+        the outside, so this is what a supervisor should check.
+        """
+        return bool(self._thread and self._thread.is_alive())
+
     # ---- loop ----
 
     def _run(self) -> None:

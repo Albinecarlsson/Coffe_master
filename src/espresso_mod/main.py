@@ -1,11 +1,31 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
-from espresso_mod.api import router
+from espresso_mod.api import close_runtime, get_runtime, router
 
-app = FastAPI(title="Espresso Mod API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Start the machine at boot, not on the first request.
+
+    The runtime owns the control loop, the telemetry sampler and the history
+    database. Creating it here means an unattended Pi is controlling the boiler
+    from the moment uvicorn is up rather than waiting for the first UI poll. It
+    also makes a hardware configuration error fail the service at startup, which
+    systemd surfaces loudly and restarts.
+    """
+    get_runtime()
+    try:
+        yield
+    finally:
+        close_runtime()
+
+
+app = FastAPI(title="Espresso Mod API", version="0.1.0", lifespan=lifespan)
 app.include_router(router)
 
 UI_PATH = Path(__file__).resolve().parent / "ui" / "index.html"

@@ -1,0 +1,34 @@
+[Unit]
+Description=Espresso Mod (Isomac Brio controller)
+Documentation=https://github.com/Albinecarlsson/Coffe_master
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust User/Group and the paths below if the checkout is not /home/pi/Coffe_master.
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/Coffe_master
+# '-' means a missing file is fine: the built-in defaults (simulation) apply.
+EnvironmentFile=-/home/pi/Coffe_master/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/pi/Coffe_master/.venv/bin/python -m uvicorn espresso_mod.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=3
+# The control loop de-energises the element on SIGTERM, so give it time to stop.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# Hardening: the machine is reached only through GPIO/I2C/SPI, so the service
+# needs no privilege beyond the group memberships documented in deploy/README.md.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

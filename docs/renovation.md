@@ -293,6 +293,7 @@ parts against your model's parts list, not from a generic listing.
 | Pump-pulsed preinfusion | `domain/pulse.py`, `services/pacing.py` |
 | Shot history (SQLite), including peak pressure | `services/history.py` |
 | Brew pressure sender over I²C (ADS1115, live + per-shot peak) | `hal/pressure_ads1115.py`, `domain/pressure.py` |
+| Health endpoint (`/health`, 200/503) and a systemd unit | `api.py`, `deploy/` |
 | Flow meter / gravimetric dosing | Not implemented — Phase 3 |
 | Hot-water path | Not implemented — Phase 4 |
 | Grinder control | Not implemented — Phase 5 |
